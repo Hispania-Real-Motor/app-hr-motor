@@ -452,6 +452,9 @@ class ReviewController extends Controller
     }
     public function refresh(Request $request, GoogleBusinessProfileReviewService $service, ?Dealership $dealership = null): RedirectResponse
     {
+        abort_unless(app_user_has_admin_permission($request->user(), 'reviews.google.manage'), 403);
+        abort_if(! $service->hasValidConnection(), 422, 'Conecta Google antes de sincronizar las reseñas.');
+
         try {
             SyncGoogleBusinessProfileReviewsJob::dispatch($dealership?->id);
         } catch (Throwable $exception) {
@@ -1017,7 +1020,5 @@ class ReviewController extends Controller
     }
 
 }
-
-
 
 
