@@ -34,11 +34,13 @@ class AdminNotificationsPage extends Page
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->role === User::ROLE_ADMIN;
+        return app_user_has_admin_permission(auth()->user(), 'notifications.manage');
     }
 
     public function mount(): void
     {
+        abort_unless(static::canAccess(), 403);
+
         $this->form->fill();
     }
 
@@ -106,6 +108,8 @@ class AdminNotificationsPage extends Page
 
     public function save(): void
     {
+        abort_unless(static::canAccess(), 403);
+
         $data = $this->form->getState();
         $selectedTargets = array_values(array_filter((array) ($data['target_roles'] ?? [])));
         $sendToAllUsers = in_array(self::TARGET_ALL_USERS, $selectedTargets, true);

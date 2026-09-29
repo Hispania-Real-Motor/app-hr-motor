@@ -42,6 +42,49 @@ class DealershipResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function getNavigationItems(): array
+    {
+        return array_map(
+            fn ($item) => $item->visible(fn (): bool => static::canViewAny()),
+            parent::getNavigationItems(),
+        );
+    }
+
+    public static function canViewAny(): bool
+    {
+        return app_user_has_admin_permission(auth()->user(), 'dealerships.manage');
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canView($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return static::canViewAny();
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
@@ -180,6 +223,8 @@ class DealershipResource extends Resource
                     ->modalHeading('Borrar delegación')
                     ->modalDescription('¿Seguro que quieres borrar esta delegación? Esta acción no se puede deshacer.')
                     ->using(function (Dealership $record): bool {
+                        abort_unless(static::canDelete($record), 403);
+
                         if ($record->users()->exists()) {
                             return false;
                         }

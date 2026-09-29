@@ -40,9 +40,7 @@ class RoleViewerController extends Controller
         $previousRole = session('role_viewer.active_role');
         session()->forget('role_viewer.active_role');
 
-        $resetMessage = $user->role === User::ROLE_ADMIN
-            ? ($previousRole ? 'Has vuelto a admin.' : 'Ya estabas en admin.')
-            : ($previousRole ? 'Has vuelto a tu rol.' : 'Ya estabas en tu rol.');
+        $resetMessage = $previousRole ? 'Has vuelto a tu rol.' : 'Ya estabas en tu rol.';
 
         return redirect()
             ->route('home')

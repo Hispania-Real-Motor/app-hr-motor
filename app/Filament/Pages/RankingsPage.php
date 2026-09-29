@@ -2,7 +2,6 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\User;
 use App\Services\LeaderboardSyncService;
 use BackedEnum;
 use Filament\Notifications\Notification;
@@ -22,7 +21,7 @@ class RankingsPage extends Page
 
     protected static string|\UnitEnum|null $navigationGroup = 'Administración';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 7;
 
     protected static ?string $breadcrumb = 'Rankings';
 
@@ -32,7 +31,7 @@ class RankingsPage extends Page
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->role === User::ROLE_ADMIN;
+        return app_user_has_admin_permission(auth()->user(), 'backoffice.rankings.manage');
     }
 
     public function syncRankings(): void

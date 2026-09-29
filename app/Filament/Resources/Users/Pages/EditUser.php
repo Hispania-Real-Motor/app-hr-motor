@@ -19,6 +19,8 @@ class EditUser extends EditRecord
 
     protected array $pendingActivityLogChanges = [];
 
+    protected bool $passwordWasChanged = false;
+
     protected function getHeaderActions(): array
     {
         return [
@@ -77,6 +79,20 @@ class EditUser extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $newPassword = $this->data['new_password'] ?? null;
+
+        unset($data['password'], $data['new_password'], $data['new_password_confirmation']);
+
+        if (filled($newPassword)) {
+            abort_unless(app_user_has_admin_permission(auth()->user(), 'users.manage'), 403);
+
+            // User::$casts hashes this plain value exactly once when it is assigned.
+            $data['password'] = $newPassword;
+            $this->passwordWasChanged = true;
+        } else {
+            $this->passwordWasChanged = false;
+        }
+
         if (($data['extra_role'] ?? null) !== User::ROLE_INFORMATION_TECHNOLOGY) {
             foreach ([
                 'it_monday_start',
@@ -99,14 +115,25 @@ class EditUser extends EditRecord
             : null;
 
         $data['dealership'] = $dealership?->name;
-        $this->pendingActivityLogChanges = $this->buildChangeSet($this->getRecord(), $data);
+        $loggableData = $data;
+        unset($loggableData['password']);
+        $this->pendingActivityLogChanges = $this->buildChangeSet($this->getRecord(), $loggableData);
 
         return $data;
     }
 
     protected function afterSave(): void
     {
-        if ($this->pendingActivityLogChanges === []) {
+        $changes = $this->pendingActivityLogChanges;
+
+        if ($this->passwordWasChanged) {
+            $changes['Contraseña'] = [
+                'from' => 'Oculta',
+                'to' => 'Actualizada',
+            ];
+        }
+
+        if ($changes === []) {
             return;
         }
 
@@ -120,10 +147,11 @@ class EditUser extends EditRecord
             actor: $actor,
             targetUser: $this->getRecord(),
             action: UserActivityLog::ACTION_UPDATED,
-            changes: $this->pendingActivityLogChanges,
+            changes: $changes,
         );
 
         $this->pendingActivityLogChanges = [];
+        $this->passwordWasChanged = false;
     }
 
     protected function buildResendInvitationWarning(): string

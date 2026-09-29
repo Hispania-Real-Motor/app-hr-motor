@@ -48,6 +48,55 @@ class UserResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function getNavigationItems(): array
+    {
+        return array_map(
+            fn ($item) => $item->visible(fn (): bool => static::canViewAny()),
+            parent::getNavigationItems(),
+        );
+    }
+
+    public static function canViewAny(): bool
+    {
+        return app_user_has_admin_permission(auth()->user(), 'users.manage')
+            && auth()->user()?->can('viewAny', User::class) === true;
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny()
+            && auth()->user()?->can('create', User::class) === true;
+    }
+
+    public static function canView($record): bool
+    {
+        return static::canViewAny()
+            && auth()->user()?->can('view', $record) === true;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return static::canViewAny()
+            && auth()->user()?->can('update', $record) === true;
+    }
+
+    public static function canDelete($record): bool
+    {
+        return static::canViewAny()
+            && auth()->user()?->can('delete', $record) === true;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return static::canViewAny()
+            && auth()->user()?->can('deleteAny', User::class) === true;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
@@ -124,6 +173,33 @@ class UserResource extends Resource
                         }
                     }
                 }),
+            TextInput::make('new_password')
+                ->label('Nueva contraseña')
+                ->password()
+                ->revealable()
+                ->autocomplete('new-password')
+                ->helperText('Déjalo vacío para conservar la contraseña actual.')
+                ->visible(fn (?User $record): bool => $record !== null
+                    && app_user_has_admin_permission(auth()->user(), 'users.manage'))
+                ->required(fn (Get $get): bool => filled($get('new_password_confirmation')))
+                ->rules([
+                    'nullable',
+                    'string',
+                    'min:8',
+                    'confirmed',
+                ]),
+            TextInput::make('new_password_confirmation')
+                ->label('Confirmar contraseña')
+                ->password()
+                ->revealable()
+                ->autocomplete('new-password')
+                ->visible(fn (?User $record): bool => $record !== null
+                    && app_user_has_admin_permission(auth()->user(), 'users.manage'))
+                ->required(fn (Get $get): bool => filled($get('new_password')))
+                ->rules([
+                    'nullable',
+                    'string',
+                ]),
             TextInput::make('salesforce_user_id')
                 ->label('ID Salesforce')
                 ->maxLength(255)
@@ -388,6 +464,8 @@ class UserResource extends Resource
                     ->modalHeading('Borrar usuario')
                     ->modalDescription('¿Estás seguro de que quieres borrar este usuario? Esta acción no se puede deshacer.')
                     ->using(function (User $record): bool {
+                        abort_unless(static::canDelete($record), 403);
+
                         $actor = auth()->user();
 
                         if (! $actor instanceof User) {
@@ -416,6 +494,8 @@ class UserResource extends Resource
                     ->modalHeading('Desactivar usuario')
                     ->modalDescription('¿Estás seguro de que quieres desactivar este usuario? Se cerrarán sus sesiones y quedará marcado como desactivado.')
                     ->action(function (User $record): void {
+                        abort_unless(static::canViewAny(), 403);
+
                         $authUser = auth()->user();
 
                         if (! $authUser instanceof User) {
@@ -453,6 +533,8 @@ class UserResource extends Resource
                     ->modalHeading('Activar usuario')
                     ->modalDescription('¿Estás seguro de que quieres activar este usuario? Podrá volver a acceder a la aplicación.')
                     ->action(function (User $record): void {
+                        abort_unless(static::canViewAny(), 403);
+
                         $authUser = auth()->user();
 
                         if (! $authUser instanceof User) {
@@ -489,6 +571,8 @@ class UserResource extends Resource
                     ->modalHeading('Restablecer contraseña')
                     ->modalDescription(fn (User $record): string => "Se enviará un enlace de restablecimiento a {$record->email}. ¿Quieres continuar?")
                     ->action(function (User $record): void {
+                        abort_unless(static::canViewAny(), 403);
+
                         $status = app(UserPasswordResetService::class)->send($record);
 
                         if ($status !== Password::RESET_LINK_SENT) {

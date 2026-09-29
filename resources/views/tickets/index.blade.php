@@ -9,6 +9,9 @@
             'ticketPriorities' => $ticketPriorities,
             'assignableUsers' => $assignableUsers,
             'canManageTickets' => $canManageTickets,
+            'canAssignTickets' => $canAssignTickets,
+            'showAllTickets' => $showAllTickets,
+            'canViewTicketReports' => $canViewTicketReports,
         ])
     </main>
 

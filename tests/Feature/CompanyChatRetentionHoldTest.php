@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Filament\Pages\ChatRetentionHoldsPage;
+use App\Filament\Pages\ChatRetentionHoldLogsPage;
 use App\Models\CompanyChatConversation;
 use App\Models\CompanyChatMessage;
 use App\Models\CompanyChatRetentionHoldAudit;
 use App\Models\User;
+use App\Models\AdminPermissionGrant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -126,6 +128,76 @@ class CompanyChatRetentionHoldTest extends TestCase
         $this->actingAs($manager)
             ->get(ChatRetentionHoldsPage::getUrl())
             ->assertForbidden();
+    }
+
+    public function test_manager_with_inherited_retention_permission_sees_navigation_and_can_manage_holds(): void
+    {
+        $manager = User::factory()->create([
+            'role' => User::ROLE_MANAGER,
+            'name' => 'Gestor con conservación',
+            'email' => 'gestor-retention@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'permission_key' => 'chat-retention-holds.manage',
+            'group_role' => User::ROLE_MANAGER,
+            'user_id' => null,
+            'group_id' => null,
+            'is_revoked' => false,
+            'granted_by_user_id' => null,
+        ]);
+
+        $firstUser = User::factory()->create();
+        $secondUser = User::factory()->create();
+        $conversation = CompanyChatConversation::query()->create([
+            'user_one_id' => min($firstUser->id, $secondUser->id),
+            'user_two_id' => max($firstUser->id, $secondUser->id),
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get(ChatRetentionHoldsPage::getUrl())
+            ->assertOk()
+            ->assertSee('Conservación excepcional')
+            ->assertSee('href="'.ChatRetentionHoldsPage::getUrl().'"', false);
+
+        $this->assertTrue(app_user_has_admin_permission($manager, 'chat-retention-holds.manage'));
+        $this->assertStringContainsString('Conservación excepcional', $response->getContent());
+
+        $this->post(route('backoffice.chat-retention-holds.store'), [
+            'conversation_id' => $conversation->id,
+            'reason' => 'Conservación autorizada por perfil',
+        ])->assertRedirect(ChatRetentionHoldsPage::getUrl());
+
+        $this->assertDatabaseHas('company_chat_conversations', [
+            'id' => $conversation->id,
+            'retention_hold' => true,
+            'retention_hold_created_by' => $manager->id,
+        ]);
+    }
+
+    public function test_user_with_direct_retention_permission_can_open_the_page_and_logs(): void
+    {
+        $user = User::factory()->create([
+            'role' => User::ROLE_USER,
+            'name' => 'Usuario con conservación',
+            'email' => 'usuario-retention@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'permission_key' => 'chat-retention-holds.manage',
+            'group_role' => null,
+            'user_id' => $user->id,
+            'group_id' => null,
+            'is_revoked' => false,
+            'granted_by_user_id' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->get(ChatRetentionHoldsPage::getUrl())
+            ->assertOk()
+            ->assertSee('Conservación excepcional');
+
+        $this->get(ChatRetentionHoldLogsPage::getUrl())->assertOk();
     }
 
     public function test_chat_purge_skips_messages_from_conversations_with_active_retention_hold(): void

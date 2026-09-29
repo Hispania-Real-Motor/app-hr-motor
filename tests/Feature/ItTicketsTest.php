@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\ItTicketCreatedMail;
+use App\Models\ItTicketNotificationSetting;
 use App\Models\ItTicket;
 use App\Models\TicketTool;
 use App\Models\User;
@@ -136,8 +137,11 @@ class ItTicketsTest extends TestCase
             $this->assertStringContainsString('Problema de acceso', $rendered);
             $this->assertStringContainsString('Salesforce', $rendered);
 
-            return $mail->hasTo('carlos.torres@hrmotor.es')
-                && $mail->hasCc('javier.arruabarrena@hrmotor.com');
+            $recipients = ItTicketNotificationSetting::recipients();
+            $primaryRecipient = array_shift($recipients);
+
+            return $mail->hasTo($primaryRecipient)
+                && $mail->hasCc($recipients);
         });
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ItTicketCreatedMail;
+use App\Models\ItTicketNotificationSetting;
 use App\Models\ItTicket;
 use App\Models\TicketTool;
 use App\Services\TicketActivityLogger;
@@ -120,15 +121,24 @@ class ItTicketController extends Controller
 
             $priorityLabel = $ticketPriorities[$validated['priority']]['label'] ?? $validated['priority'];
 
-            Mail::to('carlos.torres@hrmotor.es')
-                ->cc('javier.arruabarrena@hrmotor.com')
-                ->send(new ItTicketCreatedMail(
+            $recipients = ItTicketNotificationSetting::recipients();
+
+            if ($recipients !== []) {
+                $primaryRecipient = array_shift($recipients);
+                $mailer = Mail::to($primaryRecipient);
+
+                if ($recipients !== []) {
+                    $mailer->cc($recipients);
+                }
+
+                $mailer->send(new ItTicketCreatedMail(
                     reporterName: $request->user()->name,
                     priorityLabel: $priorityLabel,
                     ticketNumber: $ticket->number,
                     ticketTitle: $ticket->title,
                     ticketTool: $ticket->tool,
                 ));
+            }
         } catch (Throwable $exception) {
             report($exception);
         } finally {

@@ -18,12 +18,15 @@
                         Gestión de tickets
                     </h1>
                     <p class="max-w-2xl text-sm leading-6 text-white/80 sm:text-base">
-                        Revisa los tickets que tienes asignados y, si cuentas con permisos de gestión, ve también el listado global para repartir nuevas incidencias al equipo de informática.
+                        Revisa los tickets que tienes asignados y, si cuentas con permiso de asignación, ve también el listado global para repartir nuevas incidencias al equipo de informática.
                     </p>
-                    @if ($canManageTickets)
+                    @if ($canAssignTickets || $canViewTicketReports)
+                        @if ($canAssignTickets)
                         <p class="text-sm font-medium text-white/90">
                             Se pueden asignar tickets a usuarios de IT si tu propio usuario lo permite.
                         </p>
+                        @endif
+                        @if ($canViewTicketReports)
                         <div class="pt-2">
                             <a
                                 href="{{ route('tickets.reports') }}"
@@ -32,6 +35,7 @@
                                 Ver informes de ticketing
                             </a>
                         </div>
+                        @endif
                     @endif
                 </div>
             </div>
@@ -44,7 +48,7 @@
         </div>
     @endif
 
-    @if ($canManageTickets && $managedSection)
+    @if ($showAllTickets && $managedSection)
         @include('tickets.partials.section', [
             'sectionKey' => 'managed',
             'title' => 'Todos los tickets',
@@ -53,6 +57,7 @@
             'searchFields' => 'number requester assignee',
             'section' => $managedSection,
             'canManageTickets' => $canManageTickets,
+            'canAssignTickets' => $canAssignTickets,
             'ticketStatuses' => $ticketStatuses,
             'ticketPriorities' => $ticketPriorities,
             'assignableUsers' => $assignableUsers,
@@ -70,6 +75,7 @@
         'searchFields' => 'number requester',
         'section' => $assignedSection,
         'canManageTickets' => $canManageTickets,
+        'canAssignTickets' => $canAssignTickets,
         'ticketStatuses' => $ticketStatuses,
         'ticketPriorities' => $ticketPriorities,
         'assignableUsers' => $assignableUsers,

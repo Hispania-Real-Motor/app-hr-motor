@@ -25,7 +25,11 @@
                             return false;
                         }
 
-                        if (($child['route'] ?? null) === 'tools.informes' && ! app_user_has_any_role($authUser, [\App\Models\User::ROLE_MANAGEMENT, \App\Models\User::ROLE_AREA_MANAGER])) {
+                        if (($child['route'] ?? null) === 'tools.informes' && ! app_can_access_hr_reports($authUser)) {
+                            return false;
+                        }
+
+                        if (($child['route'] ?? null) === 'tickets.reports' && ! app_can_view_ticket_reports($authUser)) {
                             return false;
                         }
 
@@ -110,7 +114,11 @@
                                     return false;
                                 }
 
-                                if (($child['route'] ?? null) === 'tools.informes' && ! app_user_has_any_role($authUser, [\App\Models\User::ROLE_MANAGEMENT, \App\Models\User::ROLE_AREA_MANAGER])) {
+                                if (($child['route'] ?? null) === 'tools.informes' && ! app_can_access_hr_reports($authUser)) {
+                                    return false;
+                                }
+
+                                if (($child['route'] ?? null) === 'tickets.reports' && ! app_can_view_ticket_reports($authUser)) {
                                     return false;
                                 }
 
@@ -157,7 +165,7 @@
                 @endforeach
 
                 @auth
-                    @if (in_array($authUser?->role, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_MANAGER], true))
+                    @if (app_user_can_access_admin_panel($authUser))
                         <a href="{{ url('/backoffice') }}"
                             class="{{ $navItemClass }} px-1 font-semibold {{ request()->is('backoffice*') ? $navItemActiveClass : $navItemInactiveClass }}">
                             Admin
@@ -191,7 +199,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round"
                                     d="M12.0012 5C7.52354 5 3.73326 7.94288 2.45898 12C3.73324 16.0571 7.52354 19 12.0012 19C16.4788 19 20.2691 16.0571 21.5434 12C20.2691 7.94291 16.4788 5 12.0012 5Z" />
                             </svg>
-                            <span class="hidden lg:inline text-sm font-medium">{{ $roleViewerActive ? $visibleRoleLabel : ($authUser?->role === \App\Models\User::ROLE_ADMIN ? 'Admin' : 'Visor') }}</span>
+                            <span class="hidden lg:inline text-sm font-medium">{{ $roleViewerActive ? $visibleRoleLabel : 'Visor' }}</span>
                         </button>
 
                         <div x-show="roleViewerOpen" x-cloak x-transition:enter="transition ease-out duration-150"
@@ -229,7 +237,7 @@
                                         @method('DELETE')
                                         <button type="submit"
                                             class="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-semibold text-brand-secondary transition hover:bg-brand-secondary/5">
-                                            <span>{{ $authUser?->role === \App\Models\User::ROLE_ADMIN ? 'Volver a admin' : 'Volver a mi rol' }}</span>
+                                            <span>Volver a mi rol</span>
                                             <span class="text-xs text-brand-secondary/45">Reiniciar</span>
                                         </button>
                                     </form>
@@ -1070,7 +1078,7 @@
                                 @method('DELETE')
                                 <button type="submit" @click="roleViewerOpen = false"
                                     class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-100">
-                                    <span>{{ $authUser?->role === \App\Models\User::ROLE_ADMIN ? 'Volver a admin' : 'Volver a mi rol' }}</span>
+                                <span>Volver a mi rol</span>
                                     <span class="ml-3 text-xs text-gray-400">Reiniciar</span>
                                 </button>
                             </form>
@@ -1112,7 +1120,7 @@
                                     return false;
                                 }
 
-                                if (($child['route'] ?? null) === 'tools.informes' && ! app_user_has_any_role($authUser, [\App\Models\User::ROLE_MANAGEMENT, \App\Models\User::ROLE_AREA_MANAGER])) {
+                                if (($child['route'] ?? null) === 'tools.informes' && ! app_can_access_hr_reports($authUser)) {
                                     return false;
                                 }
 
@@ -1148,7 +1156,7 @@
             @endforeach
 
             @auth
-                @if (in_array($authUser?->role, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_MANAGER], true))
+                @if (app_user_can_access_admin_panel($authUser))
                     <a href="{{ url('/backoffice') }}" @click="open = false"
                         class="mt-2 block rounded-lg px-3 py-2 text-sm font-medium {{ request()->is('backoffice*') ? 'text-brand-primary' : 'text-gray-700 transition hover:bg-gray-100 hover:text-gray-900' }}">
                         Admin

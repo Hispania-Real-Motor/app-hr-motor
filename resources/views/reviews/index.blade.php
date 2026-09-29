@@ -23,12 +23,6 @@
 
             <div class="w-full lg:w-[34rem]">
                 <div class="grid gap-3 sm:grid-cols-2">
-                @if (auth()->user()?->role === \App\Models\User::ROLE_ADMIN || auth()->user()?->role === \App\Models\User::ROLE_MANAGER)
-                    <a href="{{ route('google-business-profile.connect') }}"
-                        class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-brand-primary/20 bg-brand-primary/5 px-4 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary/10 sm:col-span-2">
-                        Conectar Google
-                    </a>
-                @endif
                 <form method="POST" action="{{ route('reviews.refresh') }}" data-review-sync-loader-form class="sm:col-span-2">
                     @csrf
                     <button
@@ -126,13 +120,6 @@
         @if (session('error'))
             <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
                 {{ session('error') }}
-            </div>
-        @endif
-
-        @if (! $connection)
-            <div class="mb-8 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-                Aún no hay conexión activa con Google Business Profile. Cuando se autorice la cuenta,
-                la página empezará a guardar el historial y a sincronizar las reseñas automáticamente.
             </div>
         @endif
 
