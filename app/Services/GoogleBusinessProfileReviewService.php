@@ -32,6 +32,18 @@ class GoogleBusinessProfileReviewService
             ->first();
     }
 
+    public function hasValidConnection(): bool
+    {
+        $connection = $this->getConnection();
+
+        return $connection !== null
+            && filled($connection->access_token)
+            && filled($connection->refresh_token)
+            && filled(config('services.google_business_profile.client_id'))
+            && filled(config('services.google_business_profile.client_secret'))
+            && filled(config('services.google_business_profile.token_url'));
+    }
+
     public function saveAuthorizationCodeTokens(string $code): GoogleBusinessProfileConnection
     {
         $this->ensureRequiredTablesExist();

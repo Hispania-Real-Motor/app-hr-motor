@@ -31,6 +31,23 @@
                     {{ $connected ? 'Reconectar con Google' : 'Conectar con Google' }}
                 </x-filament::button>
 
+                <x-filament::button
+                    wire:click="syncReviews"
+                    wire:loading.attr="disabled"
+                    wire:target="syncReviews"
+                    :disabled="! $connected"
+                    icon="heroicon-o-arrow-path"
+                >
+                    <span wire:loading.remove wire:target="syncReviews">Sincronizar reseñas</span>
+                    <span wire:loading wire:target="syncReviews">Sincronizando reseñas...</span>
+                </x-filament::button>
+
+                @unless ($connected)
+                    <p class="text-sm text-warning-600 dark:text-warning-400">
+                        Conecta Google antes de sincronizar las reseñas
+                    </p>
+                @endunless
+
                 <p class="text-sm text-gray-500 dark:text-gray-400">
                     Las credenciales y los tokens se almacenan de forma segura y nunca se muestran en esta pantalla.
                 </p>
