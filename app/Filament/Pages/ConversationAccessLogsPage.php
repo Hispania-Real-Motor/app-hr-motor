@@ -33,7 +33,7 @@ class ConversationAccessLogsPage extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->role === User::ROLE_ADMIN;
+        return app_user_has_admin_permission(auth()->user(), 'conversation-access.manage');
     }
 
     public function mount(): void

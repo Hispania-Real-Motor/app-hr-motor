@@ -3,7 +3,6 @@
 namespace App\Filament\Pages;
 
 use App\Http\Controllers\AdminChatRetentionHoldController;
-use App\Models\User;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Pages\Page;
@@ -28,7 +27,7 @@ class ChatRetentionHoldsPage extends Page
 
     public static function canAccess(): bool
     {
-        return auth()->user()?->role === User::ROLE_ADMIN;
+        return app_user_has_admin_permission(auth()->user(), 'chat-retention-holds.manage');
     }
 
     public function mount(): void

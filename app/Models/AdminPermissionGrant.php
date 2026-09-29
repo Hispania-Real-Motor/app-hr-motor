@@ -15,8 +15,16 @@ class AdminPermissionGrant extends Model
         'user_id',
         'group_id',
         'group_role',
+        'is_revoked',
         'granted_by_user_id',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_revoked' => 'boolean',
+        ];
+    }
 
     public function user(): BelongsTo
     {

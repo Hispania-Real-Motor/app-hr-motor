@@ -157,12 +157,14 @@ class AdminPermissionController extends Controller
         if ($target['type'] === 'user') {
             return AdminPermissionGrant::query()
                 ->where('user_id', $target['id'])
+                ->where('is_revoked', false)
                 ->pluck('permission_key')
                 ->values();
         }
 
         return AdminPermissionGrant::query()
             ->where('group_role', $target['role'])
+            ->where('is_revoked', false)
             ->pluck('permission_key')
             ->values();
     }

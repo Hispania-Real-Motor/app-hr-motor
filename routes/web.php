@@ -8,6 +8,8 @@ use App\Http\Controllers\AdminChatRetentionHoldController;
 use App\Http\Controllers\AdminChatGroupLogController;
 use App\Http\Controllers\AdminPermissionLogController;
 use App\Http\Controllers\AdminPolicyAcceptanceLogController;
+use App\Http\Middleware\EnsureReviewsAccess;
+use App\Http\Middleware\EnsureCurriculaAccess;
 use App\Http\Controllers\AgendaController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\AdminNotificationLogController;
@@ -78,25 +80,27 @@ Route::middleware('auth')->group(function () {
     })->name('tools.web');
 
     Route::get('/informes', function () {
-        abort_unless(app_user_has_any_role(request()->user(), [User::ROLE_MANAGEMENT, User::ROLE_AREA_MANAGER]), 403);
+        abort_unless(app_can_access_hr_reports(request()->user()), 403);
 
         return view('tools.embedded', [
             'url' => 'https://informes.app.hrmotor.com/informes/',
-            'title' => 'Informes',
+            'title' => 'Informes HR',
         ]);
     })->name('tools.informes');
 
-    Route::get('/curriculums', [CurriculumsController::class, 'index'])->name('curriculums.index');
-    Route::post('/curriculums', [CurriculumsController::class, 'store'])->name('curriculums.store');
-    Route::get('/curriculums/{analysis}', [CurriculumsController::class, 'show'])
-        ->whereNumber('analysis')
-        ->name('curriculums.show');
-    Route::delete('/curriculums/{analysis}', [CurriculumsController::class, 'destroy'])
-        ->whereNumber('analysis')
-        ->name('curriculums.destroy');
-    Route::get('/curriculums/{analysis}/estado', [CurriculumsController::class, 'status'])
-        ->whereNumber('analysis')
-        ->name('curriculums.status');
+    Route::middleware(EnsureCurriculaAccess::class)->group(function () {
+        Route::get('/curriculums', [CurriculumsController::class, 'index'])->name('curriculums.index');
+        Route::post('/curriculums', [CurriculumsController::class, 'store'])->name('curriculums.store');
+        Route::get('/curriculums/{analysis}', [CurriculumsController::class, 'show'])
+            ->whereNumber('analysis')
+            ->name('curriculums.show');
+        Route::delete('/curriculums/{analysis}', [CurriculumsController::class, 'destroy'])
+            ->whereNumber('analysis')
+            ->name('curriculums.destroy');
+        Route::get('/curriculums/{analysis}/estado', [CurriculumsController::class, 'status'])
+            ->whereNumber('analysis')
+            ->name('curriculums.status');
+    });
 
     Route::get('/chat', [CompanyChatController::class, 'index'])->name('chat.beta');
     Route::get('/chat/politica', [CompanyChatController::class, 'policyStatus'])->name('chat.beta.policy.status');
@@ -171,7 +175,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/integraciones/google-business-profile/callback', [GoogleBusinessProfileAuthController::class, 'callback'])
         ->name('google-business-profile.callback');
 
-    Route::middleware('role:marketing,gerencia')->group(function () {
+    Route::middleware(EnsureReviewsAccess::class)->group(function () {
         Route::get('/resenas', [ReviewController::class, 'index'])->name('reviews.index');
         Route::get('/resenas/todas', [ReviewController::class, 'all'])->name('reviews.all');
         Route::get('/resenas/informes', [ReviewController::class, 'reports'])->name('reviews.reports');
@@ -1479,15 +1483,14 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('empresa.index');
 
+    Route::get('/admin', function () {
+        return redirect()->to('/backoffice');
+    })->middleware('admin.access')->name('admin.index');
+
     Route::middleware('role:admin,gestor')->group(function () {
-        Route::get('/admin', function () {
-            return redirect()->to('/backoffice');
-        })->name('admin.index');
 
         Route::get('/integraciones/salesforce/conectar', [SalesforceAuthController::class, 'redirect'])->name('salesforce.connect');
         Route::get('/integraciones/salesforce/callback', [SalesforceAuthController::class, 'callback'])->name('salesforce.callback');
-        Route::post('/leaderboard/sync', SalesforceLeaderboardSyncController::class)->name('leaderboard.sync');
-
         Route::get('/usuarios', [UserController::class, 'index'])->name('users.index');
         Route::get('/usuarios/crear', [UserController::class, 'create'])->name('users.create');
         Route::post('/usuarios', [UserController::class, 'store'])->name('users.store');
@@ -1594,26 +1597,6 @@ Route::middleware('auth')->group(function () {
 
         Route::middleware('role:admin')->group(function () {
             Route::get('/admin/logs/grupos-chat/descargar', [AdminChatGroupLogController::class, 'export'])->name('admin.chat-group-logs.export');
-
-            // Endpoints used by the backoffice page. The Filament GET page is
-            // registered by ChatRetentionHoldsPage; these mutations stay
-            // behind the same admin-only boundary as the legacy screen.
-            Route::post('/backoffice/conservacion-excepcional', [AdminChatRetentionHoldController::class, 'store'])
-                ->name('backoffice.chat-retention-holds.store');
-            Route::patch('/backoffice/conservacion-excepcional/{conversation}', [AdminChatRetentionHoldController::class, 'update'])
-                ->whereNumber('conversation')
-                ->name('backoffice.chat-retention-holds.update');
-            Route::delete('/backoffice/conservacion-excepcional/{conversation}/desactivar', [AdminChatRetentionHoldController::class, 'destroy'])
-                ->whereNumber('conversation')
-                ->name('backoffice.chat-retention-holds.destroy');
-            Route::post('/backoffice/conservacion-excepcional/usuarios', [AdminChatRetentionHoldController::class, 'storeUser'])
-                ->name('backoffice.chat-retention-holds.users.store');
-            Route::patch('/backoffice/conservacion-excepcional/usuarios/{userHold}', [AdminChatRetentionHoldController::class, 'updateUser'])
-                ->whereNumber('userHold')
-                ->name('backoffice.chat-retention-holds.users.update');
-            Route::delete('/backoffice/conservacion-excepcional/usuarios/{userHold}/desactivar', [AdminChatRetentionHoldController::class, 'destroyUser'])
-                ->whereNumber('userHold')
-                ->name('backoffice.chat-retention-holds.users.destroy');
         });
         Route::get('/admin/logs/notificaciones/descargar', [AdminNotificationLogController::class, 'export'])->name('admin.notification-logs.export');
         Route::get('/backoffice/delegaciones/logs/descargar', function (\Illuminate\Http\Request $request) {
@@ -1837,6 +1820,26 @@ Route::middleware('auth')->group(function () {
             ]);
         })->name('backoffice.zone-logs.export');
     });
+
+    // The Filament page and these mutations share the same effective permission.
+    Route::post('/backoffice/conservacion-excepcional', [AdminChatRetentionHoldController::class, 'store'])
+        ->name('backoffice.chat-retention-holds.store');
+    Route::patch('/backoffice/conservacion-excepcional/{conversation}', [AdminChatRetentionHoldController::class, 'update'])
+        ->whereNumber('conversation')
+        ->name('backoffice.chat-retention-holds.update');
+    Route::delete('/backoffice/conservacion-excepcional/{conversation}/desactivar', [AdminChatRetentionHoldController::class, 'destroy'])
+        ->whereNumber('conversation')
+        ->name('backoffice.chat-retention-holds.destroy');
+    Route::post('/backoffice/conservacion-excepcional/usuarios', [AdminChatRetentionHoldController::class, 'storeUser'])
+        ->name('backoffice.chat-retention-holds.users.store');
+    Route::patch('/backoffice/conservacion-excepcional/usuarios/{userHold}', [AdminChatRetentionHoldController::class, 'updateUser'])
+        ->whereNumber('userHold')
+        ->name('backoffice.chat-retention-holds.users.update');
+    Route::delete('/backoffice/conservacion-excepcional/usuarios/{userHold}/desactivar', [AdminChatRetentionHoldController::class, 'destroyUser'])
+        ->whereNumber('userHold')
+        ->name('backoffice.chat-retention-holds.users.destroy');
+
+    Route::post('/leaderboard/sync', SalesforceLeaderboardSyncController::class)->name('leaderboard.sync');
 
     Route::get('/admin/logs/acceso-conversacion/descargar', [AdminConversationAccessLogController::class, 'export'])->name('admin.conversation-access.logs.export');
 

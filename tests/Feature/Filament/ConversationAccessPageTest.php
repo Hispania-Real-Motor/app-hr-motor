@@ -8,6 +8,7 @@ use App\Models\CompanyChatConversation;
 use App\Models\CompanyChatConversationAccessAudit;
 use App\Models\CompanyChatMessage;
 use App\Models\CompanyChatMessageRevision;
+use App\Models\AdminPermissionGrant;
 use App\Models\Dealership;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,7 +27,7 @@ class ConversationAccessPageTest extends TestCase
         $this->withoutVite();
     }
 
-    public function test_only_admins_can_access_the_filament_conversation_access_page(): void
+    public function test_users_without_the_permission_cannot_access_the_filament_conversation_access_page(): void
     {
         $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
         $manager = User::factory()->create(['role' => User::ROLE_MANAGER]);
@@ -39,6 +40,80 @@ class ConversationAccessPageTest extends TestCase
         $this->actingAs($manager)
             ->get(ConversationAccessPage::getUrl())
             ->assertForbidden();
+
+        $this->get(ConversationAccessLogsPage::getUrl())->assertForbidden();
+        $this->get(route('admin.conversation-access.logs.export'))->assertForbidden();
+    }
+
+    public function test_manager_with_inherited_permission_sees_navigation_and_can_request_conversation_access(): void
+    {
+        $manager = User::factory()->create([
+            'role' => User::ROLE_MANAGER,
+            'email' => 'gestor-conversation-access@example.com',
+        ]);
+        $this->grantPermissionToRole(User::ROLE_MANAGER);
+
+        $sender = User::factory()->create();
+        $recipient = User::factory()->create();
+        $conversation = CompanyChatConversation::query()->create([
+            'user_one_id' => min($sender->id, $recipient->id),
+            'user_two_id' => max($sender->id, $recipient->id),
+        ]);
+        CompanyChatMessage::query()->create([
+            'company_chat_conversation_id' => $conversation->id,
+            'sender_id' => $sender->id,
+            'body' => 'Mensaje accesible con permiso',
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get(ConversationAccessPage::getUrl())
+            ->assertOk()
+            ->assertSee('Acceso justificado a conversaciones')
+            ->assertSee('href="'.ConversationAccessPage::getUrl().'"', false);
+
+        $this->assertStringContainsString('Acceso justificado a conversaciones', $response->getContent());
+        $this->assertTrue(app_user_has_admin_permission($manager, 'conversation-access.manage'));
+
+        Livewire::actingAs($manager);
+
+        Livewire::test(ConversationAccessPage::class)
+            ->mountTableAction('access', $conversation->getKey())
+            ->setTableActionData(['reason' => 'Revisión autorizada'])
+            ->callMountedTableAction()
+            ->assertSet('contentUnlocked', true)
+            ->assertSee('Mensaje accesible con permiso');
+
+        $this->assertDatabaseHas('company_chat_conversation_access_audits', [
+            'company_chat_conversation_id' => $conversation->id,
+            'admin_user_id' => $manager->id,
+            'reason' => 'Revisión autorizada',
+            'result' => 'granted',
+        ]);
+    }
+
+    public function test_user_with_direct_permission_can_access_the_page_and_logs(): void
+    {
+        $user = User::factory()->create([
+            'role' => User::ROLE_USER,
+            'email' => 'usuario-conversation-access@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'permission_key' => 'conversation-access.manage',
+            'user_id' => $user->id,
+            'group_id' => null,
+            'group_role' => null,
+            'is_revoked' => false,
+            'granted_by_user_id' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->get(ConversationAccessPage::getUrl())
+            ->assertOk()
+            ->assertSee('Acceso justificado a conversaciones');
+
+        $this->get(ConversationAccessLogsPage::getUrl())->assertOk();
+        $this->get(route('admin.conversation-access.logs.export'))->assertOk();
     }
 
     public function test_admin_can_open_the_conversation_access_log_from_the_access_page(): void
@@ -52,7 +127,7 @@ class ConversationAccessPageTest extends TestCase
             ->assertSee(ConversationAccessLogsPage::getUrl(), false);
     }
 
-    public function test_conversation_access_log_is_read_only_and_admin_only(): void
+    public function test_conversation_access_log_is_read_only_and_requires_the_permission(): void
     {
         $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
         $manager = User::factory()->create(['role' => User::ROLE_MANAGER]);
@@ -514,5 +589,17 @@ class ConversationAccessPageTest extends TestCase
             ->set('tableFilters.conversation_type.value', null)
             ->assertSee('Grupo Filtrado')
             ->assertSee('Usuario Privado');
+    }
+
+    private function grantPermissionToRole(string $role): AdminPermissionGrant
+    {
+        return AdminPermissionGrant::query()->create([
+            'permission_key' => 'conversation-access.manage',
+            'user_id' => null,
+            'group_id' => null,
+            'group_role' => $role,
+            'is_revoked' => false,
+            'granted_by_user_id' => null,
+        ]);
     }
 }

@@ -10,13 +10,17 @@ use Throwable;
 
 class GoogleBusinessProfileAuthController extends Controller
 {
+    private const PERMISSION = 'reviews.google.manage';
+
     public function redirect(Request $request)
     {
+        $this->authorizeAccess();
+
         $redirectUri = route('google-business-profile.callback', [], true);
 
         if (blank(config('services.google_business_profile.client_id')) || blank($redirectUri)) {
             return redirect()
-                ->route('reviews.index')
+                ->to(\App\Filament\Pages\GoogleBusinessProfileConnectionPage::getUrl())
                 ->with('error', 'Faltan variables de entorno de Google Business Profile. Revisa GOOGLE_BUSINESS_PROFILE_CLIENT_ID y GOOGLE_BUSINESS_PROFILE_REDIRECT_URI.');
         }
 
@@ -44,6 +48,8 @@ class GoogleBusinessProfileAuthController extends Controller
 
     public function callback(Request $request, GoogleBusinessProfileReviewService $service)
     {
+        $this->authorizeAccess();
+
         $expectedState = (string) $request->session()->pull('google_business_profile_oauth_state');
         $receivedState = (string) $request->string('state');
 
@@ -64,12 +70,17 @@ class GoogleBusinessProfileAuthController extends Controller
             ]);
 
             return redirect()
-                ->route('reviews.index')
+                ->to(\App\Filament\Pages\GoogleBusinessProfileConnectionPage::getUrl())
                 ->with('error', 'No se ha podido completar la conexion OAuth con Google Business Profile.');
         }
 
         return redirect()
-            ->route('reviews.index')
+            ->to(\App\Filament\Pages\GoogleBusinessProfileConnectionPage::getUrl())
             ->with('success', 'Google Business Profile conectado correctamente. La sincronizacion se ejecutara en el siguiente ciclo o al pulsar Sincronizar ahora.');
+    }
+
+    private function authorizeAccess(): void
+    {
+        abort_unless(app_user_has_admin_permission(auth()->user(), self::PERMISSION), 403);
     }
 }

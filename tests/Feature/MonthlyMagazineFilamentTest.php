@@ -6,6 +6,7 @@ use App\Filament\Pages\MonthlyMagazinePage;
 use App\Filament\Pages\MonthlyMagazineLogsPage;
 use App\Models\MonthlyMagazineActivityLog;
 use App\Models\MonthlyMagazineSetting;
+use App\Models\AdminPermissionGrant;
 use App\Models\User;
 use App\Services\MonthlyMagazineActivityLogWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,6 +52,12 @@ class MonthlyMagazineFilamentTest extends TestCase
         $manager = User::factory()->create([
             'role' => User::ROLE_MANAGER,
             'email' => 'gestor@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'group_role' => User::ROLE_MANAGER,
+            'permission_key' => 'magazine.manage',
+            'granted_by_user_id' => $admin->id,
         ]);
 
         $this->actingAs($admin)

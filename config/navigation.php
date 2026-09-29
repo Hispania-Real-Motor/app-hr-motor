@@ -43,8 +43,12 @@ return [
                     'route' => 'reviews.index',
                 ],
                 [
-                    'label' => 'Informes',
+                    'label' => 'Informes HR',
                     'route' => 'tools.informes',
+                ],
+                [
+                    'label' => 'Informes Tickets',
+                    'route' => 'tickets.reports',
                 ],
             ],
         ],
@@ -74,7 +78,7 @@ return [
                 'route' => 'home',
             ],
             [
-                'label' => 'Informes',
+                'label' => 'Informes HR',
                 'route' => 'tools.informes',
             ],
             [

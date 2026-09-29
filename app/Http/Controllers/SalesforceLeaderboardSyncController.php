@@ -11,6 +11,8 @@ class SalesforceLeaderboardSyncController extends Controller
         LeaderboardSyncService $service,
     )
     {
+        abort_unless(app_user_has_admin_permission(auth()->user(), 'backoffice.rankings.manage'), 403);
+
         $redirect = redirect()->back();
 
         if (! $service->hasSalesforceConnection()) {
