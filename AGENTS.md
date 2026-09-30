@@ -16,7 +16,7 @@
 - El permiso `roles.view` es exclusivo del visor y no cuenta para el acceso global al backoffice. La opción Admin y el acceso al panel solo se habilitan mediante permisos reales de módulos del backoffice.
 - Nunca se debe confiar únicamente en ocultar el elemento visual: las rutas y peticiones del visor deben validar el permiso y los roles permitidos en servidor.
 - Toda nueva consulta de roles debe respetar esta jerarquía, los grants directos y heredados, las revocaciones y el bypass de Admin.
-- El visor de roles de la navbar solo muestra roles adicionales. Los roles base Admin, Gestor y Usuario pertenecen exclusivamente al sistema de permisos del backoffice y nunca deben exponerse desde el visor de roles de la aplicación.
+- El visor de roles de la navbar permite a un administrador simular tanto roles base como roles adicionales. Cuando hay una selección activa, esta sustituye completamente la identidad funcional para la aplicación: se usa únicamente el rol simulado, sin `extra_role`, permisos directos ni grants heredados de la identidad real. Al desactivarlo se restaura la combinación real del usuario.
 
 ### Tickets IT
 

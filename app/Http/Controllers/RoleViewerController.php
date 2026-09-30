@@ -20,7 +20,7 @@ class RoleViewerController extends Controller
             'role' => ['required', 'string', 'in:' . implode(',', $allowedRoles)],
         ]);
 
-        if ($validated['role'] === $user->role) {
+        if ($validated['role'] === $user->role && blank($user->extra_role)) {
             session()->forget('role_viewer.active_role');
         } else {
             session(['role_viewer.active_role' => $validated['role']]);
