@@ -85,6 +85,20 @@ class NavigationVisibilityTest extends TestCase
         $this->assertStringContainsString('/backoffice', $navbarHtml);
     }
 
+    public function test_admin_with_informatica_extra_role_does_not_see_it_support_card_on_home(): void
+    {
+        $admin = User::factory()->create([
+            'role' => User::ROLE_ADMIN,
+            'extra_role' => User::ROLE_INFORMATION_TECHNOLOGY,
+            'email' => 'admin-informatica-home@example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('<h2 class="text-center text-2xl font-bold tracking-tight text-brand-secondary">\n                                    Asistencia IT\n                                </h2>', false);
+    }
+
     public function test_manager_with_a_backoffice_permission_sees_the_admin_backoffice_link_in_the_navbar(): void
     {
         $manager = User::factory()->create([
