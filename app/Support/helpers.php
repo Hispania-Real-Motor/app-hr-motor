@@ -53,25 +53,20 @@ if (! function_exists('app_can_access_hr_reports')) {
 if (! function_exists('app_can_access_rankings')) {
     function app_can_access_rankings(?User $user = null): bool
     {
-        $user ??= auth()->user();
+        return app_user_has_application_permission($user ?? auth()->user(), 'rankings.view');
+    }
+}
 
-        if (! $user) {
+if (! function_exists('app_user_has_application_permission')) {
+    function app_user_has_application_permission(?User $user, string $permissionKey): bool
+    {
+        $definition = app_admin_permission_definitions()[$permissionKey] ?? null;
+
+        if (! is_array($definition) || ($definition['scope'] ?? 'backoffice') !== 'application') {
             return false;
         }
 
-        $allowedRoles = [
-            User::ROLE_COMMERCIAL,
-            User::ROLE_STORE_MANAGER,
-            User::ROLE_AREA_MANAGER,
-            User::ROLE_HR_NEWCARS,
-            User::ROLE_MANAGEMENT,
-        ];
-
-        if ($user->role === User::ROLE_ADMIN) {
-            return app_role_viewer_active($user) && in_array(app_visible_role($user), $allowedRoles, true);
-        }
-
-        return app_user_has_any_role($user, $allowedRoles);
+        return app_user_has_admin_permission($user, $permissionKey);
     }
 }
 
@@ -82,10 +77,6 @@ if (! function_exists('app_can_open_rankings_pages')) {
 
         if (! $user) {
             return false;
-        }
-
-        if ($user->role === User::ROLE_ADMIN) {
-            return true;
         }
 
         return app_can_access_rankings($user);
