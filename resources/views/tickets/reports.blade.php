@@ -56,6 +56,7 @@
         $dealershipRangeOptions = collect($dealershipRangeOptions ?? []);
         $dealershipReportRows = collect(data_get($dealershipReport ?? [], 'rows', []));
         $dealershipReportTotal = (int) data_get($dealershipReport, 'totalTickets', 0);
+        $ticketsByRequesterRows = collect(data_get($ticketsByRequesterReport ?? [], 'rows', []));
         $polarToCartesian = function (float $centerX, float $centerY, float $radius, float $angleDeg): array {
             $angleRad = deg2rad($angleDeg - 90);
 
@@ -646,6 +647,41 @@
         </div>
     @endif
     </div>
+</section>
+<section class="mt-6 rounded-[2rem] border border-brand-secondary/10 bg-white p-5 shadow-sm sm:p-6">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <h2 class="text-2xl font-bold tracking-tight text-brand-secondary">Personas con más tickets abiertos</h2>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-brand-secondary/65">
+                Usuarios que han abierto más tickets, independientemente de su estado.
+            </p>
+        </div>
+    </div>
+
+    @if ($ticketsByRequesterRows->isEmpty())
+        <div class="mt-6 rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-brand-secondary/65">
+            No hay tickets abiertos para mostrar este ranking.
+        </div>
+    @else
+        @php
+            $ticketsByRequesterMax = max((int) $ticketsByRequesterRows->max('totalTickets'), 1);
+        @endphp
+
+        <div class="mt-6 space-y-3">
+            @foreach ($ticketsByRequesterRows as $row)
+                @php
+                    $barPercentage = ($row['totalTickets'] / $ticketsByRequesterMax) * 100;
+                @endphp
+                <div data-open-tickets-requester-bar="{{ $row['id'] }}" class="flex items-center gap-3 text-sm">
+                    <span class="w-44 shrink-0 truncate font-semibold text-brand-secondary">{{ $row['name'] }}</span>
+                    <div class="h-3.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div class="h-full rounded-full bg-[#E51A2E]" style="width: {{ max(3, $barPercentage) }}%;" aria-label="{{ $row['totalTickets'] }} tickets"></div>
+                    </div>
+                    <span class="w-10 shrink-0 text-right font-bold text-brand-secondary/70">{{ $row['totalTickets'] }}</span>
+                </div>
+            @endforeach
+        </div>
+    @endif
 </section>
 </main>
 
