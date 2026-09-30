@@ -513,6 +513,8 @@ class AdminPermissionsPage extends Page
                     $module = $this->moduleLabel('tickets-it');
                 } elseif ($key === 'backoffice.rankings.manage') {
                     $module = 'Rankings';
+                } elseif ($key === 'rankings.view') {
+                    $module = 'Rankings';
                 } elseif ($key === 'videos.view') {
                     $module = 'Vídeos formación';
                 } elseif ($key === 'reports.hr.view') {

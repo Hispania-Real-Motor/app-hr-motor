@@ -44,6 +44,14 @@ return [
             'scope' => 'backoffice',
             'default_roles' => [User::ROLE_ADMIN],
         ],
+        'rankings.view' => [
+            'label' => 'Ver rankings públicos',
+            'description' => 'Permite consultar los rankings públicos de la aplicación.',
+            'route' => 'leaderboard.sales',
+            'icon' => 'rankings',
+            'scope' => 'application',
+            'default_roles' => [],
+        ],
         'curricula.view' => [
             'label' => 'Analizar currículums',
             'description' => 'Permite analizar currículums, rankear candidatos y definir cuáles pasan a entrevista con sus puntos fuertes y débiles.',
@@ -89,7 +97,7 @@ return [
         ],
         'backoffice.rankings.manage' => [
             'label' => 'Gestionar rankings',
-            'description' => 'Permite consultar y recargar los rankings del backoffice mediante Salesforce.',
+            'description' => 'Permite acceder a Rankings en el backoffice y recargar los datos desde Salesforce.',
             'route' => 'backoffice.rankings',
             'icon' => 'rankings',
             'scope' => 'backoffice',
