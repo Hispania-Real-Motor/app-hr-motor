@@ -34,7 +34,7 @@ class TicketsController extends Controller
 
         $canManageTickets = app_can_assign_tickets($request->user());
         $canAssignTickets = app_can_assign_tickets($request->user());
-        $showAllTickets = $request->user()->role === User::ROLE_ADMIN || $canAssignTickets;
+        $showAllTickets = app_visible_role($request->user()) === User::ROLE_ADMIN || $canAssignTickets;
         $canViewTicketReports = app_can_view_ticket_reports($request->user());
         $ticketStatuses = $this->ticketStatuses();
         $ticketPriorities = $this->ticketPriorities();

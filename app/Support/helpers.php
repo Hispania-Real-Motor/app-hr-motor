@@ -13,13 +13,10 @@ if (! function_exists('app_effective_roles')) {
             return [];
         }
 
-        if (app_role_viewer_enabled($user)) {
-            $viewerRole = session('role_viewer.active_role');
-            $allowedRoles = array_keys(app_role_viewer_options($user));
+        $viewerRole = app_role_viewer_selected_role($user);
 
-            if (is_string($viewerRole) && $viewerRole !== $user->role && in_array($viewerRole, $allowedRoles, true)) {
-                return [$viewerRole];
-            }
+        if ($viewerRole !== null) {
+            return [$viewerRole];
         }
 
         return array_values(array_unique(array_filter([
@@ -160,7 +157,7 @@ if (! function_exists('app_can_access_tickets')) {
             return false;
         }
 
-        return $user->role === User::ROLE_ADMIN
+        return app_visible_role($user) === User::ROLE_ADMIN
             || app_user_has_any_role($user, [User::ROLE_INFORMATION_TECHNOLOGY])
             || app_can_assign_tickets($user);
     }
@@ -243,6 +240,23 @@ if (! function_exists('app_default_admin_permissions_for')) {
 
 if (! function_exists('app_user_has_admin_permission')) {
     function app_user_has_admin_permission(?User $user, string $permissionKey): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        $viewerRole = app_role_viewer_selected_role($user);
+
+        if ($viewerRole !== null) {
+            return app_role_has_admin_permission($viewerRole, $permissionKey);
+        }
+
+        return app_user_has_admin_permission_for_real_identity($user, $permissionKey);
+    }
+}
+
+if (! function_exists('app_user_has_admin_permission_for_real_identity')) {
+    function app_user_has_admin_permission_for_real_identity(?User $user, string $permissionKey): bool
     {
         if (! $user) {
             return false;
@@ -332,10 +346,6 @@ if (! function_exists('app_user_has_any_admin_permission')) {
             return false;
         }
 
-        if ($user->role === User::ROLE_ADMIN) {
-            return true;
-        }
-
         return collect(app_backoffice_permission_keys())
             ->contains(fn (string $permissionKey): bool => app_user_has_admin_permission($user, $permissionKey));
     }
@@ -402,10 +412,9 @@ if (! function_exists('app_visible_role')) {
             return null;
         }
 
-        $viewerRole = session('role_viewer.active_role');
-        $allowedRoles = array_keys(app_role_viewer_options($user));
+        $viewerRole = app_role_viewer_selected_role($user);
 
-        if (app_role_viewer_enabled($user) && is_string($viewerRole) && in_array($viewerRole, $allowedRoles, true)) {
+        if ($viewerRole !== null) {
             return $viewerRole;
         }
 
@@ -425,14 +434,10 @@ if (! function_exists('app_role_viewer_active')) {
     {
         $user ??= auth()->user();
 
-        if (! app_role_viewer_enabled($user)) {
-            return false;
-        }
+        $viewerRole = app_role_viewer_selected_role($user);
 
-        $viewerRole = session('role_viewer.active_role');
-        $allowedRoles = array_keys(app_role_viewer_options($user));
-
-        return is_string($viewerRole) && $viewerRole !== $user->role && in_array($viewerRole, $allowedRoles, true);
+        return $viewerRole !== null
+            && ! ($viewerRole === $user->role && blank($user->extra_role));
     }
 }
 
@@ -450,7 +455,7 @@ if (! function_exists('app_role_viewer_enabled')) {
     {
         $user ??= auth()->user();
 
-        return app_user_has_admin_permission($user, 'roles.view');
+        return app_user_has_admin_permission_for_real_identity($user, 'roles.view');
     }
 }
 
@@ -463,11 +468,31 @@ if (! function_exists('app_role_viewer_options')) {
             return [];
         }
 
-        if (! app_user_has_admin_permission($user, 'roles.view')) {
+        if (! app_role_viewer_enabled($user)) {
             return [];
         }
 
-        return User::extraRoleLabels();
+        return $user->role === User::ROLE_ADMIN
+            ? User::roleLabels()
+            : User::extraRoleLabels();
+    }
+}
+
+if (! function_exists('app_role_viewer_selected_role')) {
+    function app_role_viewer_selected_role(?User $user = null): ?string
+    {
+        $user ??= auth()->user();
+
+        if (! $user || ! app_role_viewer_enabled($user)) {
+            return null;
+        }
+
+        $viewerRole = session('role_viewer.active_role');
+        $allowedRoles = array_keys(app_role_viewer_options($user));
+
+        return is_string($viewerRole) && in_array($viewerRole, $allowedRoles, true)
+            ? $viewerRole
+            : null;
     }
 }
 
