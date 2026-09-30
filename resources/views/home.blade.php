@@ -20,6 +20,7 @@
         $authUser = auth()->user();
         $isCallCenterHome = app_user_has_any_role($authUser, [\App\Models\User::ROLE_CALL_CENTER]);
         $canAccessItSupport = $authUser
+            && $authUser->extra_role !== \App\Models\User::ROLE_INFORMATION_TECHNOLOGY
             && (
                 $authUser->role !== \App\Models\User::ROLE_ADMIN
                 || app_role_viewer_active($authUser)
