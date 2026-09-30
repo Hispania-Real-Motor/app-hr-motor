@@ -545,6 +545,13 @@ class AdminPermissionsPageTest extends TestCase
             User::ROLE_MANAGEMENT,
         ];
         $legacyCurriculaRoles = [User::ROLE_HUMAN_RESOURCES];
+        $legacyRankingsRoles = [
+            User::ROLE_COMMERCIAL,
+            User::ROLE_STORE_MANAGER,
+            User::ROLE_AREA_MANAGER,
+            User::ROLE_HR_NEWCARS,
+            User::ROLE_MANAGEMENT,
+        ];
 
         foreach ($nonAdminRoles as $role) {
             $component->call('selectProfile', $role);
@@ -555,7 +562,8 @@ class AdminPermissionsPageTest extends TestCase
                     ($permission['key'] === 'videos.view' && in_array($role, $legacyVideoRoles, true))
                         || ($permission['key'] === 'reports.hr.view' && in_array($role, $legacyHrReportRoles, true))
                         || ($permission['key'] === 'reviews.view' && in_array($role, $legacyReviewRoles, true))
-                        || ($permission['key'] === 'curricula.view' && in_array($role, $legacyCurriculaRoles, true)),
+                        || ($permission['key'] === 'curricula.view' && in_array($role, $legacyCurriculaRoles, true))
+                        || ($permission['key'] === 'rankings.view' && in_array($role, $legacyRankingsRoles, true)),
                     $permission['is_checked'],
                 );
             }
