@@ -1076,6 +1076,10 @@ class TicketsInteriorTest extends TestCase
             ->assertOk()
             ->assertSee('Tickets por delegaciones', false)
             ->assertSee('data-dealership-range-select', false)
+            ->assertSee('Personas con más tickets abiertos', false)
+            ->assertSee('data-requester-range-select', false)
+            ->assertSee('dealership_range', false)
+            ->assertSee('requester_range', false)
             ->assertSee('Delegación Norte', false)
             ->assertSee('Delegación Sur', false)
             ->assertSee('3 incidencias en total', false);
@@ -1264,11 +1268,40 @@ class TicketsInteriorTest extends TestCase
                     'dealership_range' => '1m',
                 ]));
 
-            $response->assertOk()->assertJsonStructure(['html']);
+            $response->assertOk()->assertJsonStructure(['html'])->assertJsonMissing(['requesterHtml']);
             $html = (string) $response->json('html');
+            $this->assertStringNotContainsString('Solicitante Norte Filtro', $html);
 
             $this->assertStringContainsString('Delegación Norte Filtro', $html);
             $this->assertStringNotContainsString('Delegación Sur Filtro', $html);
+
+            $requesterResponse = $this->actingAs($manager)
+                ->get(route('tickets.reports', [
+                    'ajax' => 1,
+                    'report' => 'requester',
+                    'requester_range' => '1m',
+                ]));
+
+            $requesterResponse->assertOk()->assertJsonStructure(['html'])->assertJsonMissing(['requesterHtml']);
+            $requesterHtml = (string) $requesterResponse->json('html');
+            $this->assertStringContainsString('Solicitante Norte Filtro', $requesterHtml);
+            $this->assertStringNotContainsString('Solicitante Sur Filtro', $requesterHtml);
+            $this->assertStringNotContainsString('Delegación Norte Filtro', $requesterHtml);
+
+            $historicalResponse = $this->actingAs($manager)
+                ->get(route('tickets.reports', [
+                    'ajax' => 1,
+                    'report' => 'requester',
+                    'requester_range' => 'all',
+                ]));
+
+            $historicalResponse->assertOk();
+            $historicalRequesterHtml = (string) $historicalResponse->json('html');
+
+            $this->assertStringContainsString('Solicitante Norte Filtro', $historicalRequesterHtml);
+            $this->assertStringContainsString('Solicitante Sur Filtro', $historicalRequesterHtml);
+            $this->assertSame(1, substr_count($requesterHtml, 'data-open-tickets-requester-bar='));
+            $this->assertSame(2, substr_count($historicalRequesterHtml, 'data-open-tickets-requester-bar='));
         } finally {
             Carbon::setTestNow();
         }

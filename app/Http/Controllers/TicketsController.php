@@ -72,15 +72,24 @@ class TicketsController extends Controller
         $resolutionRange = $this->normalizeResolutionRange((string) $request->input('resolution_range', 'all'));
         $ticketToolRange = $this->normalizeTicketToolRange((string) $request->input('ticket_tool_range', 'all'));
         $dealershipRange = $this->normalizeDealershipRange((string) $request->input('dealership_range', 'all'));
+        $requesterRange = $this->normalizeRequesterRange((string) $request->input('requester_range', 'all'));
         $closedUsersRangeOptions = $this->closedUsersRangeOptions();
         $resolutionRangeOptions = $this->resolutionRangeOptions();
         $ticketToolRangeOptions = $this->ticketToolRangeOptions();
         $dealershipRangeOptions = $this->dealershipRangeOptions();
+        $requesterRangeOptions = $this->requesterRangeOptions();
+        $requestedReport = $request->boolean('ajax')
+            ? (string) $request->input('report', 'closed_users')
+            : null;
         $closedReportRows = $this->buildClosedTicketsReportRows($closedUsersRange);
         $resolutionReport = $this->buildResolutionTimeReport($resolutionRange);
         $ticketToolReport = $this->buildTicketToolReport($ticketToolRange);
-        $dealershipReport = $this->buildDealershipTicketReport($dealershipRange);
-        $ticketsByRequesterReport = $this->buildTicketsByRequesterReport();
+        $dealershipReport = !$requestedReport || $requestedReport === 'dealership'
+            ? $this->buildDealershipTicketReport($dealershipRange)
+            : ['totalTickets' => 0, 'rows' => []];
+        $ticketsByRequesterReport = !$requestedReport || $requestedReport === 'requester'
+            ? $this->buildTicketsByRequesterReport($requesterRange)
+            : ['rows' => []];
 
         $viewData = [
             'backUrl' => route('tickets.index'),
@@ -94,7 +103,10 @@ class TicketsController extends Controller
             'dealershipReportRows' => $dealershipReport['rows'] ?? [],
             'dealershipRange' => $dealershipRange,
             'dealershipRangeOptions' => $dealershipRangeOptions,
+            'requesterRange' => $requesterRange,
+            'requesterRangeOptions' => $requesterRangeOptions,
             'ticketsByRequesterReport' => $ticketsByRequesterReport,
+            'ticketsByRequesterReportRows' => $ticketsByRequesterReport['rows'] ?? [],
             'reportCards' => $this->buildCurrentIncidentsReportCards(),
             'closedReportRows' => $closedReportRows,
             'closedUsersRange' => $closedUsersRange,
@@ -110,11 +122,11 @@ class TicketsController extends Controller
         ];
 
         if ($request->boolean('ajax')) {
-            $report = (string) $request->input('report', 'closed_users');
-            $partialView = match ($report) {
+            $partialView = match ($requestedReport) {
                 'resolution' => 'tickets.partials.resolution-time-report-body',
                 'ticket_tool' => 'tickets.partials.ticket-tool-report-body',
                 'dealership' => 'tickets.partials.dealership-report-body',
+                'requester' => 'tickets.partials.requester-report-body',
                 default => 'tickets.partials.closed-users-report-body',
             };
 
@@ -1404,6 +1416,19 @@ class TicketsController extends Controller
     }
 
     /**
+     * @return array<string, array{label:string,start:?Carbon,end:?Carbon}>
+     */
+    private function requesterRangeOptions(): array
+    {
+        return $this->closedUsersRangeOptions();
+    }
+
+    private function normalizeRequesterRange(string $range): string
+    {
+        return array_key_exists($range, $this->requesterRangeOptions()) ? $range : 'all';
+    }
+
+    /**
      * @return array{start:?Carbon,end:?Carbon}
      */
     private function closedUsersRangeWindow(string $range): array
@@ -1448,6 +1473,19 @@ class TicketsController extends Controller
     private function dealershipRangeWindow(string $range): array
     {
         $options = $this->dealershipRangeOptions();
+
+        return [
+            'start' => $options[$range]['start'] ?? null,
+            'end' => $options[$range]['end'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array{start:?Carbon,end:?Carbon}
+     */
+    private function requesterRangeWindow(string $range): array
+    {
+        $options = $this->requesterRangeOptions();
 
         return [
             'start' => $options[$range]['start'] ?? null,
@@ -1776,10 +1814,18 @@ class TicketsController extends Controller
     /**
      * @return array{rows:array<int, array{id:int,name:string,totalTickets:int}>}
      */
-    private function buildTicketsByRequesterReport(): array
+    private function buildTicketsByRequesterReport(string $range = 'all'): array
     {
+        $window = $this->requesterRangeWindow($range);
+
         $rows = ItTicket::query()
             ->join('users', 'users.id', '=', 'it_tickets.user_id')
+            ->when($window['start'], function (Builder $query) use ($window): void {
+                $query->where('it_tickets.created_at', '>=', $window['start']);
+            })
+            ->when($window['end'], function (Builder $query) use ($window): void {
+                $query->where('it_tickets.created_at', '<=', $window['end']);
+            })
             ->selectRaw('users.id as id, users.name as name, COUNT(it_tickets.id) as total_tickets')
             ->groupBy('users.id', 'users.name')
             ->orderByDesc('total_tickets')

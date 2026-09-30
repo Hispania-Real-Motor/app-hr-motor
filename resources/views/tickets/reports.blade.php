@@ -649,6 +649,11 @@
     </div>
 </section>
 <section class="mt-6 rounded-[2rem] border border-brand-secondary/10 bg-white p-5 shadow-sm sm:p-6">
+    <div
+        data-requester-report
+        data-requester-report-url="{{ route('tickets.reports') }}"
+        data-requester-range="{{ $requesterRange }}"
+    >
     <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
             <h2 class="text-2xl font-bold tracking-tight text-brand-secondary">Personas con más tickets abiertos</h2>
@@ -656,32 +661,24 @@
                 Usuarios que han abierto más tickets, independientemente de su estado.
             </p>
         </div>
+        <div class="inline-flex w-fit max-w-full">
+            <select
+                id="requester-range"
+                data-requester-range-select
+                class="w-auto min-w-[13rem] max-w-full rounded-2xl border border-brand-secondary/10 bg-white px-4 py-3 text-sm font-semibold text-brand-secondary shadow-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
+                style="width: max-content;"
+            >
+                @foreach ($requesterRangeOptions as $rangeKey => $rangeOption)
+                    <option value="{{ $rangeKey }}" @selected($requesterRange === $rangeKey)>{{ $rangeOption['label'] ?? $rangeKey }}</option>
+                @endforeach
+            </select>
+        </div>
     </div>
 
-    @if ($ticketsByRequesterRows->isEmpty())
-        <div class="mt-6 rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-brand-secondary/65">
-            No hay tickets abiertos para mostrar este ranking.
-        </div>
-    @else
-        @php
-            $ticketsByRequesterMax = max((int) $ticketsByRequesterRows->max('totalTickets'), 1);
-        @endphp
-
-        <div class="mt-6 space-y-3">
-            @foreach ($ticketsByRequesterRows as $row)
-                @php
-                    $barPercentage = ($row['totalTickets'] / $ticketsByRequesterMax) * 100;
-                @endphp
-                <div data-open-tickets-requester-bar="{{ $row['id'] }}" class="flex items-center gap-3 text-sm">
-                    <span class="w-44 shrink-0 truncate font-semibold text-brand-secondary">{{ $row['name'] }}</span>
-                    <div class="h-3.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <div class="h-full rounded-full bg-[#E51A2E]" style="width: {{ max(3, $barPercentage) }}%;" aria-label="{{ $row['totalTickets'] }} tickets"></div>
-                    </div>
-                    <span class="w-10 shrink-0 text-right font-bold text-brand-secondary/70">{{ $row['totalTickets'] }}</span>
-                </div>
-            @endforeach
-        </div>
-    @endif
+    <div class="mt-6 transition-[opacity,transform] duration-300 ease-out" data-requester-report-body>
+        @include('tickets.partials.requester-report-body', ['ticketsByRequesterReportRows' => $ticketsByRequesterRows->all()])
+    </div>
+    </div>
 </section>
 </main>
 
@@ -769,6 +766,7 @@
                     if (typeof payload.html === 'string') {
                         swapReportMarkup(payload.html);
                     }
+
                 } catch (error) {
                     if (error?.name !== 'AbortError') {
                         console.error(error);
@@ -876,6 +874,19 @@
                 body: dealershipRoot.querySelector('[data-dealership-report-body]'),
                 rangeParam: 'dealership_range',
                 reportKey: 'dealership',
+            });
+        }
+
+        const requesterRoot = document.querySelector('[data-requester-report]');
+
+        if (requesterRoot) {
+            createReportController({
+                root: requesterRoot,
+                endpoint: requesterRoot.dataset.requesterReportUrl || '',
+                select: requesterRoot.querySelector('[data-requester-range-select]'),
+                body: requesterRoot.querySelector('[data-requester-report-body]'),
+                rangeParam: 'requester_range',
+                reportKey: 'requester',
             });
         }
     });
