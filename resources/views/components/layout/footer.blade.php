@@ -2,7 +2,7 @@
     $authUser = auth()->user();
     $footerPlatformItems = collect(config('navigation.footer.platform', []))
         ->filter(function (array $item) use ($authUser): bool {
-            if (($item['route'] ?? null) === 'tools.informes' && ! app_user_has_any_role($authUser, [\App\Models\User::ROLE_MANAGEMENT, \App\Models\User::ROLE_AREA_MANAGER])) {
+            if (($item['route'] ?? null) === 'tools.informes' && ! app_can_access_hr_reports($authUser)) {
                 return false;
             }
 
@@ -37,7 +37,7 @@
                             return false;
                         }
 
-                        if (($child['route'] ?? null) === 'tools.informes' && ! app_user_has_any_role($authUser, [\App\Models\User::ROLE_MANAGEMENT, \App\Models\User::ROLE_AREA_MANAGER])) {
+                        if (($child['route'] ?? null) === 'tools.informes' && ! app_can_access_hr_reports($authUser)) {
                             return false;
                         }
 

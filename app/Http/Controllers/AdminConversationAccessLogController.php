@@ -151,6 +151,6 @@ class AdminConversationAccessLogController extends Controller
 
     private function authorizeAdmin(Request $request): void
     {
-        abort_unless($request->user() !== null && app_real_role($request->user()) === User::ROLE_ADMIN, 403);
+        abort_unless(app_user_has_admin_permission($request->user(), 'conversation-access.manage'), 403);
     }
 }

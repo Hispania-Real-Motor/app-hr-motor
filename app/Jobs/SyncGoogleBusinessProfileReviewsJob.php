@@ -7,6 +7,7 @@ use App\Services\GoogleBusinessProfileReviewService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -49,5 +50,15 @@ class SyncGoogleBusinessProfileReviewsJob implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    /**
+     * @return array<int, WithoutOverlapping>
+     */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping('google-business-profile-reviews-sync'))->expireAfter(900),
+        ];
     }
 }

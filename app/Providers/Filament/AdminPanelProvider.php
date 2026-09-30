@@ -28,6 +28,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('backoffice')
             ->path('backoffice')
+            ->viteTheme('resources/css/filament/backoffice/theme.css')
             ->login()
             ->defaultThemeMode(ThemeMode::Dark)
             ->sidebarCollapsibleOnDesktop()

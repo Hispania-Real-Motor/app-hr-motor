@@ -39,23 +39,14 @@ if (! function_exists('app_user_has_any_role')) {
 if (! function_exists('app_can_access_videos')) {
     function app_can_access_videos(?User $user = null): bool
     {
-        $user ??= auth()->user();
+        return app_user_has_admin_permission($user ?? auth()->user(), 'videos.view');
+    }
+}
 
-        if (! $user) {
-            return false;
-        }
-
-        $allowedRoles = [
-            User::ROLE_COMMERCIAL,
-            User::ROLE_STORE_MANAGER,
-            User::ROLE_AREA_MANAGER,
-        ];
-
-        if ($user->role === User::ROLE_ADMIN) {
-            return app_role_viewer_active($user) && in_array(app_visible_role($user), $allowedRoles, true);
-        }
-
-        return app_user_has_any_role($user, $allowedRoles);
+if (! function_exists('app_can_access_hr_reports')) {
+    function app_can_access_hr_reports(?User $user = null): bool
+    {
+        return app_user_has_admin_permission($user ?? auth()->user(), 'reports.hr.view');
     }
 }
 
@@ -158,31 +149,14 @@ if (! function_exists('app_chat_role_label')) {
 if (! function_exists('app_can_access_reviews')) {
     function app_can_access_reviews(?User $user = null): bool
     {
-        $user ??= auth()->user();
-
-        if (! $user) {
-            return false;
-        }
-
-        $allowedRoles = [
-            User::ROLE_MARKETING,
-            User::ROLE_MANAGEMENT,
-        ];
-
-        return app_user_has_any_role($user, $allowedRoles);
+        return app_user_has_admin_permission($user ?? auth()->user(), 'reviews.view');
     }
 }
 
 if (! function_exists('app_can_access_curriculums')) {
     function app_can_access_curriculums(?User $user = null): bool
     {
-        $user ??= auth()->user();
-
-        if (! $user) {
-            return false;
-        }
-
-        return app_user_has_any_role($user, [User::ROLE_HUMAN_RESOURCES]);
+        return app_user_has_admin_permission($user ?? auth()->user(), 'curricula.view');
     }
 }
 
@@ -195,7 +169,9 @@ if (! function_exists('app_can_access_tickets')) {
             return false;
         }
 
-        return app_user_has_any_role($user, [User::ROLE_INFORMATION_TECHNOLOGY]);
+        return $user->role === User::ROLE_ADMIN
+            || app_user_has_any_role($user, [User::ROLE_INFORMATION_TECHNOLOGY])
+            || app_can_assign_tickets($user);
     }
 }
 
@@ -203,6 +179,20 @@ if (! function_exists('app_can_see_tickets_navigation')) {
     function app_can_see_tickets_navigation(?User $user = null): bool
     {
         return app_can_access_tickets($user);
+    }
+}
+
+if (! function_exists('app_can_assign_tickets')) {
+    function app_can_assign_tickets(?User $user = null): bool
+    {
+        return app_user_has_admin_permission($user ?? auth()->user(), 'tickets-it.assign');
+    }
+}
+
+if (! function_exists('app_can_view_ticket_reports')) {
+    function app_can_view_ticket_reports(?User $user = null): bool
+    {
+        return app_user_has_admin_permission($user ?? auth()->user(), 'tickets-it.reports.view');
     }
 }
 
@@ -220,6 +210,23 @@ if (! function_exists('app_admin_permission_keys')) {
     }
 }
 
+if (! function_exists('app_backoffice_permission_keys')) {
+    function app_backoffice_permission_keys(): array
+    {
+        $applicationOnlyPermissions = [
+            'roles.view',
+            'tickets-it.assign',
+            'tickets-it.reports.view',
+        ];
+
+        return collect(app_admin_permission_definitions())
+            ->reject(fn (array $definition, string $permissionKey): bool => in_array($permissionKey, $applicationOnlyPermissions, true))
+            ->reject(fn (array $definition): bool => ($definition['scope'] ?? 'backoffice') !== 'backoffice')
+            ->keys()
+            ->all();
+    }
+}
+
 if (! function_exists('app_default_admin_permissions_for')) {
     function app_default_admin_permissions_for(?User $user = null): array
     {
@@ -227,6 +234,10 @@ if (! function_exists('app_default_admin_permissions_for')) {
 
         if (! $user) {
             return [];
+        }
+
+        if ($user->role === User::ROLE_ADMIN) {
+            return app_admin_permission_keys();
         }
 
         return collect(app_admin_permission_definitions())
@@ -250,22 +261,32 @@ if (! function_exists('app_user_has_admin_permission')) {
             return false;
         }
 
-        if (in_array($permissionKey, app_default_admin_permissions_for($user), true)) {
+        if ($user->role === User::ROLE_ADMIN) {
             return true;
         }
 
-        if ($user->adminPermissionGrants()->where('permission_key', $permissionKey)->exists()) {
-            return true;
-        }
-
-        if (filled($user->extra_role) && AdminPermissionGrant::query()
+        if ($user->adminPermissionGrants()
             ->where('permission_key', $permissionKey)
-            ->where('group_role', $user->extra_role)
+            ->where('is_revoked', false)
             ->exists()) {
             return true;
         }
 
-        return false;
+        $roles = array_values(array_filter([$user->role, $user->extra_role], static fn (?string $role): bool => filled($role)));
+        $roleOverrides = AdminPermissionGrant::query()
+            ->where('permission_key', $permissionKey)
+            ->whereIn('group_role', $roles)
+            ->get(['group_role', 'is_revoked']);
+
+        if ($roleOverrides->contains('is_revoked', true)) {
+            return false;
+        }
+
+        if ($roleOverrides->contains('is_revoked', false)) {
+            return true;
+        }
+
+        return in_array($permissionKey, app_default_admin_permissions_for($user), true);
     }
 }
 
@@ -278,6 +299,23 @@ if (! function_exists('app_role_has_admin_permission')) {
 
         if (! in_array($permissionKey, app_admin_permission_keys(), true)) {
             return false;
+        }
+
+        if ($role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        $override = AdminPermissionGrant::query()
+            ->where('permission_key', $permissionKey)
+            ->where('group_role', $role)
+            ->first(['is_revoked']);
+
+        if ($override?->is_revoked) {
+            return false;
+        }
+
+        if ($override) {
+            return true;
         }
 
         $definition = app_admin_permission_definitions()[$permissionKey] ?? [];
@@ -294,8 +332,8 @@ if (! function_exists('app_role_has_admin_permission')) {
     }
 }
 
-if (! function_exists('app_user_can_access_admin_panel')) {
-    function app_user_can_access_admin_panel(?User $user = null): bool
+if (! function_exists('app_user_has_any_admin_permission')) {
+    function app_user_has_any_admin_permission(?User $user = null): bool
     {
         $user ??= auth()->user();
 
@@ -307,8 +345,17 @@ if (! function_exists('app_user_can_access_admin_panel')) {
             return true;
         }
 
-        return collect(app_admin_permission_keys())
+        return collect(app_backoffice_permission_keys())
             ->contains(fn (string $permissionKey): bool => app_user_has_admin_permission($user, $permissionKey));
+    }
+}
+
+if (! function_exists('app_user_can_access_admin_panel')) {
+    function app_user_can_access_admin_panel(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+
+        return app_user_has_any_admin_permission($user);
     }
 }
 
@@ -347,7 +394,9 @@ if (! function_exists('app_admin_permission_key_for_route')) {
         return match (true) {
             Str::startsWith($routeName, ['users.']) => 'users.manage',
             Str::startsWith($routeName, ['dealerships.']) => 'dealerships.manage',
-            Str::startsWith($routeName, ['tickets.']) => 'tickets-it.manage',
+            Str::startsWith($routeName, ['tickets.reports']) => 'tickets-it.reports.view',
+            Str::startsWith($routeName, ['tickets.assign']) => 'tickets-it.assign',
+            Str::startsWith($routeName, ['tickets.']) => 'tickets-it.assign',
             default => null,
         };
     }
@@ -410,15 +459,7 @@ if (! function_exists('app_role_viewer_enabled')) {
     {
         $user ??= auth()->user();
 
-        if (! $user) {
-            return false;
-        }
-
-        return in_array($user->role, [
-            User::ROLE_ADMIN,
-            User::ROLE_MANAGER,
-            User::ROLE_INFORMATION_TECHNOLOGY,
-        ], true);
+        return app_user_has_admin_permission($user, 'roles.view');
     }
 }
 
@@ -431,26 +472,11 @@ if (! function_exists('app_role_viewer_options')) {
             return [];
         }
 
-        if ($user->role === User::ROLE_ADMIN) {
-            return array_filter(
-                User::roleLabels(),
-                fn (string $label, string $role): bool => $role !== User::ROLE_USER,
-                ARRAY_FILTER_USE_BOTH
-            );
+        if (! app_user_has_admin_permission($user, 'roles.view')) {
+            return [];
         }
 
-        if ($user->role === User::ROLE_MANAGER) {
-            return array_merge(
-                [User::ROLE_MANAGER => User::roleLabels()[User::ROLE_MANAGER] ?? 'Gestor'],
-                User::extraRoleLabels()
-            );
-        }
-
-        if ($user->role === User::ROLE_INFORMATION_TECHNOLOGY) {
-            return User::extraRoleLabels();
-        }
-
-        return [];
+        return User::extraRoleLabels();
     }
 }
 

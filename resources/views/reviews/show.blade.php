@@ -49,19 +49,6 @@
     @endphp
 
     <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        @if (session('success'))
-            <div class="mb-6 rounded-3xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900 shadow-sm">
-                <p class="font-semibold">Sincronizaci&oacute;n solicitada</p>
-                <p class="mt-1 leading-6">{{ session('success') }}</p>
-            </div>
-        @endif
-
-        @if (session('error'))
-            <div class="mb-6 rounded-3xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900 shadow-sm">
-                <p class="font-semibold">No se ha podido iniciar la sincronizaci&oacute;n</p>
-                <p class="mt-1 leading-6">{{ session('error') }}</p>
-            </div>
-        @endif
         <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
                 <a href="{{ route('reviews.index') }}" class="text-sm font-semibold text-brand-primary">Volver a rese&ntilde;as</a>
@@ -71,24 +58,6 @@
                 </p>
             </div>
 
-            <form method="POST" action="{{ $dealership->id ? route('reviews.refresh', $dealership) : route('reviews.refresh') }}" data-review-sync-loader-form>
-                @csrf
-                <button
-                    type="submit"
-                    data-review-sync-loader-button
-                    data-review-sync-loader-default="Sincronizar delegaci&oacute;n"
-                    data-review-sync-loader-loading="Sincronizando..."
-                    class="inline-flex w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white sm:w-auto"
-                >
-                    <svg data-review-sync-loader-icon xmlns="http://www.w3.org/2000/svg" class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356m-1.636 10.26a9 9 0 11-2.867-9.668L21 9.348" />
-                    </svg>
-                    <span data-review-sync-loader-label>Sincronizar delegaci&oacute;n</span>
-                </button>
-                <p class="mt-2 max-w-sm text-xs leading-5 text-gray-500">
-                    La sincronizaci&oacute;n se procesa en segundo plano. Si hay muchas rese&ntilde;as, puede tardar unos minutos en reflejarse.
-                </p>
-            </form>
         </div>
 
         <div class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-stretch">
@@ -282,65 +251,4 @@
         </div>
     </div>
 
-    <div
-        id="review-sync-loader"
-        class="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/45 px-6 py-8 opacity-0 backdrop-blur-sm transition-opacity duration-200"
-    >
-        <div class="w-full max-w-md rounded-[2rem] border border-white/60 bg-white/95 p-7 text-center shadow-[0_30px_80px_rgba(15,23,42,0.22)]">
-            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.18),rgba(255,255,255,0.95))] ring-1 ring-brand-primary/10">
-                <div class="h-8 w-8 animate-spin rounded-full border-[3px] border-brand-primary/20 border-t-brand-primary"></div>
-            </div>
-            <h2 class="mt-5 text-xl font-semibold text-brand-secondary">Sincronizando rese&ntilde;as</h2>
-            <p class="mt-2 text-sm leading-6 text-brand-secondary/70">
-                Estamos actualizando la delegaci&oacute;n y su historial. Esta pantalla se cerrar&aacute; sola al terminar.
-            </p>
-        </div>
-    </div>
-
-    <script>
-        (() => {
-            const overlay = document.getElementById('review-sync-loader');
-
-            document.querySelectorAll('[data-review-sync-loader-form]').forEach((form) => {
-                let submitted = false;
-
-                form.addEventListener('submit', (event) => {
-                    if (submitted) {
-                        return;
-                    }
-
-                    submitted = true;
-                    event.preventDefault();
-
-                    const button = form.querySelector('[data-review-sync-loader-button]');
-                    const label = form.querySelector('[data-review-sync-loader-label]');
-                    const icon = form.querySelector('[data-review-sync-loader-icon]');
-
-                    if (button) {
-                        button.disabled = true;
-                        button.classList.add('opacity-90');
-                    }
-
-                    if (label && button?.dataset.reviewSyncLoaderLoading) {
-                        label.textContent = button.dataset.reviewSyncLoaderLoading;
-                    }
-
-                    if (icon) {
-                        icon.classList.add('animate-spin');
-                    }
-
-                    if (overlay) {
-                        overlay.classList.remove('hidden');
-
-                        requestAnimationFrame(() => {
-                            overlay.classList.remove('pointer-events-none', 'opacity-0');
-                            overlay.classList.add('flex', 'opacity-100');
-                        });
-                    }
-
-                    window.setTimeout(() => form.submit(), 80);
-                });
-            });
-        })();
-    </script>
 @endsection

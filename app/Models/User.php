@@ -257,7 +257,7 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_MANAGER], true);
+        return app_user_can_access_admin_panel($this);
     }
 
     public function sendPasswordResetNotification($token): void

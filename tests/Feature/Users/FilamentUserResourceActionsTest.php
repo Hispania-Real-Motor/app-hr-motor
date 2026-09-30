@@ -3,6 +3,7 @@
 namespace Tests\Feature\Users;
 
 use App\Models\User;
+use App\Models\AdminPermissionGrant;
 use App\Services\UserDeactivationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -131,6 +132,14 @@ class FilamentUserResourceActionsTest extends TestCase
         $manager = User::factory()->create([
             'role' => User::ROLE_MANAGER,
             'is_active' => true,
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'permission_key' => 'users.manage',
+            'user_id' => $manager->id,
+            'group_id' => null,
+            'group_role' => null,
+            'granted_by_user_id' => null,
         ]);
 
         User::factory()->create([

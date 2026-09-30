@@ -8,6 +8,7 @@ use App\Filament\Resources\Contacts\Pages\ListContactLogs;
 use App\Filament\Resources\Contacts\ContactResource;
 use App\Models\Contact;
 use App\Models\ContentActivityLog;
+use App\Models\AdminPermissionGrant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -29,6 +30,12 @@ class FilamentContactManagementTest extends TestCase
         $manager = User::factory()->create([
             'role' => User::ROLE_MANAGER,
             'email' => 'gestor@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'group_role' => User::ROLE_MANAGER,
+            'permission_key' => 'contacts.manage',
+            'granted_by_user_id' => $manager->id,
         ]);
 
         $this->actingAs($manager)
@@ -187,6 +194,12 @@ class FilamentContactManagementTest extends TestCase
         $manager = User::factory()->create([
             'role' => User::ROLE_MANAGER,
             'email' => 'gestor@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'group_role' => User::ROLE_MANAGER,
+            'permission_key' => 'contacts.manage',
+            'granted_by_user_id' => $manager->id,
         ]);
 
         $this->actingAs($manager)

@@ -40,6 +40,49 @@ class ZoneResource extends Resource
 
     protected static ?int $navigationSort = 3;
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function getNavigationItems(): array
+    {
+        return array_map(
+            fn ($item) => $item->visible(fn (): bool => static::canViewAny()),
+            parent::getNavigationItems(),
+        );
+    }
+
+    public static function canViewAny(): bool
+    {
+        return app_user_has_admin_permission(auth()->user(), 'zones.manage');
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canView($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete($record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return static::canViewAny();
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
@@ -118,6 +161,8 @@ class ZoneResource extends Resource
                     ->modalHeading('Borrar zona')
                     ->modalDescription('¿Seguro que quieres borrar esta zona? Esta acción no se puede deshacer.')
                     ->using(function (Zone $record): bool {
+                        abort_unless(static::canDelete($record), 403);
+
                         $actor = auth()->user();
 
                         if (! $actor instanceof \App\Models\User) {
