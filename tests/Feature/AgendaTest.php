@@ -42,6 +42,10 @@ class AgendaTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('Laura Comercial')
-            ->assertSee('Comercial · Bilbao', false);
+            ->assertSee('Comercial · Bilbao', false)
+            ->assertSee('Teléfono')
+            ->assertSee('Extensión Enreach')
+            ->assertDontSee('Telefono')
+            ->assertDontSee('Extension Enreach');
     }
 }
