@@ -80,6 +80,7 @@ class TicketsController extends Controller
         $resolutionReport = $this->buildResolutionTimeReport($resolutionRange);
         $ticketToolReport = $this->buildTicketToolReport($ticketToolRange);
         $dealershipReport = $this->buildDealershipTicketReport($dealershipRange);
+        $ticketsByRequesterReport = $this->buildTicketsByRequesterReport();
 
         $viewData = [
             'backUrl' => route('tickets.index'),
@@ -93,6 +94,7 @@ class TicketsController extends Controller
             'dealershipReportRows' => $dealershipReport['rows'] ?? [],
             'dealershipRange' => $dealershipRange,
             'dealershipRangeOptions' => $dealershipRangeOptions,
+            'ticketsByRequesterReport' => $ticketsByRequesterReport,
             'reportCards' => $this->buildCurrentIncidentsReportCards(),
             'closedReportRows' => $closedReportRows,
             'closedUsersRange' => $closedUsersRange,
@@ -1769,6 +1771,30 @@ class TicketsController extends Controller
             'totalTickets' => (int) collect($rows)->sum('totalTickets'),
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * @return array{rows:array<int, array{id:int,name:string,totalTickets:int}>}
+     */
+    private function buildTicketsByRequesterReport(): array
+    {
+        $rows = ItTicket::query()
+            ->join('users', 'users.id', '=', 'it_tickets.user_id')
+            ->selectRaw('users.id as id, users.name as name, COUNT(it_tickets.id) as total_tickets')
+            ->groupBy('users.id', 'users.name')
+            ->orderByDesc('total_tickets')
+            ->orderBy('users.name')
+            ->limit(20)
+            ->get()
+            ->map(fn ($row): array => [
+                'id' => (int) $row->id,
+                'name' => (string) $row->name,
+                'totalTickets' => (int) $row->total_tickets,
+            ])
+            ->values()
+            ->all();
+
+        return ['rows' => $rows];
     }
 
     /**

@@ -1081,6 +1081,83 @@ class TicketsInteriorTest extends TestCase
             ->assertSee('3 incidencias en total', false);
     }
 
+    public function test_ticket_reports_rank_requesters_by_all_ticket_statuses(): void
+    {
+        $manager = User::factory()->create([
+            'role' => User::ROLE_USER,
+            'extra_role' => User::ROLE_INFORMATION_TECHNOLOGY,
+            'name' => 'Gestor informe solicitantes',
+            'email' => 'gestor-informe-solicitantes@example.com',
+        ]);
+
+        AdminPermissionGrant::query()->create([
+            'permission_key' => 'tickets-it.reports.view',
+            'user_id' => $manager->id,
+            'group_id' => null,
+            'group_role' => null,
+            'granted_by_user_id' => null,
+        ]);
+
+        $topRequester = User::factory()->create(['name' => 'Ana Cinco', 'email' => 'ana-cinco@example.com']);
+        $secondRequester = User::factory()->create(['name' => 'Bruno Dos', 'email' => 'bruno-dos@example.com']);
+        $assignee = User::factory()->create([
+            'name' => 'Técnico IT',
+            'email' => 'tecnico-it@example.com',
+            'extra_role' => User::ROLE_INFORMATION_TECHNOLOGY,
+        ]);
+
+        $createTicket = function (User $requester, string $status, ?int $assignedTo = null, int $index = 1): void {
+            ItTicket::query()->create([
+                'user_id' => $requester->id,
+                'assigned_to_user_id' => $assignedTo,
+                'number' => 'IT-REPORT-' . str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+                'tool' => 'Web HR Motor',
+                'priority' => 'medium',
+                'status' => $status,
+                'title' => 'Ticket de informe',
+                'description' => 'Ticket para el ranking de solicitantes.',
+                'screenshots' => [],
+            ]);
+        };
+
+        for ($index = 1; $index <= 5; $index++) {
+            $createTicket($topRequester, 'new', $index === 1 ? $assignee->id : null, $index);
+        }
+
+        for ($index = 6; $index <= 7; $index++) {
+            $createTicket($secondRequester, 'in_progress', null, $index);
+        }
+
+        $createTicket($topRequester, 'closed', null, 8);
+        $createTicket($topRequester, 'resolved', null, 9);
+        $createTicket($topRequester, 'cancelled', null, 10);
+
+        for ($index = 11; $index <= 31; $index++) {
+            $requester = User::factory()->create([
+                'name' => 'Solicitante ' . $index,
+                'email' => 'solicitante-' . $index . '@example.com',
+            ]);
+            $createTicket($requester, 'new', null, $index);
+        }
+
+        $response = $this->actingAs($manager)->get(route('tickets.reports'));
+
+        $response
+            ->assertOk()
+            ->assertSee('Personas con más tickets abiertos', false)
+            ->assertSee('Usuarios que han abierto más tickets, independientemente de su estado.', false)
+            ->assertSeeInOrder(['Tickets por delegaciones', 'Personas con más tickets abiertos'], false)
+            ->assertSeeInOrder(['Ana Cinco', '8', 'Bruno Dos', '2'], false)
+            ->assertSeeInOrder(['Solicitante 11', 'Solicitante 12'], false);
+
+        $html = $response->getContent();
+        $this->assertSame(20, substr_count($html, 'data-open-tickets-requester-bar='));
+        $this->assertStringNotContainsString('<table', $html);
+        $this->assertStringContainsString('bg-[#E51A2E]', $html);
+        $this->assertMatchesRegularExpression('/data-open-tickets-requester-bar="\d+".*?Ana Cinco.*?aria-label="8 tickets"/s', $html);
+        $this->assertStringNotContainsString('>Técnico IT</span>', $html);
+    }
+
     public function test_ticket_reports_page_can_filter_tickets_by_dealership_in_real_time(): void
     {
         $manager = User::factory()->create([
