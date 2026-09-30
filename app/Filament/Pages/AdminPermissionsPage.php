@@ -56,9 +56,24 @@ class AdminPermissionsPage extends Page
     {
         $this->authorizeAccess();
 
-        if (in_array($tab, ['profiles', 'users'], true)) {
-            $this->activeTab = $tab;
+        abort_unless(in_array($tab, ['profiles', 'users'], true), 404);
+
+        if ($tab === $this->activeTab) {
+            return;
         }
+
+        if ($tab === 'profiles') {
+            // Leaving the user editor discards its unsaved local state. The
+            // selected profile is reloaded from the database below.
+            $this->resetUserPermissionState();
+            $this->loadProfileGrants();
+        } else {
+            // Leaving the profile editor must not carry its dirty arrays into
+            // the direct-user editor. A user is selected explicitly there.
+            $this->resetProfilePermissionState();
+        }
+
+        $this->activeTab = $tab;
     }
 
     public function selectProfile(string $role): void
@@ -66,16 +81,10 @@ class AdminPermissionsPage extends Page
         $this->authorizeAccess();
         abort_unless(array_key_exists($role, $this->allProfileOptions()), 404);
 
-        if ($role !== $this->selectedProfileRole && $this->profilePermissionsDirty()) {
-            Notification::make()
-                ->title('Guarda o descarta los cambios antes de cambiar de perfil.')
-                ->warning()
-                ->send();
-
-            return;
-        }
-
+        // Selection changes are an explicit discard boundary. Never reuse
+        // pending edits from the previously selected profile.
         $this->selectedProfileRole = $role;
+        $this->resetUserPermissionState();
         $this->loadProfileGrants();
     }
 
@@ -214,7 +223,12 @@ class AdminPermissionsPage extends Page
         $this->authorizeAccess();
         abort_unless(User::query()->whereKey($userId)->exists(), 404);
 
+        // Selection changes are an explicit discard boundary. Load only the
+        // direct grants belonging to the newly selected user.
+        $this->resetProfilePermissionState();
         $this->selectedUserId = $userId;
+        $this->userGrantKeys = [];
+        $this->userOriginalGrantKeys = [];
         $this->loadUserGrants();
     }
 
@@ -354,13 +368,14 @@ class AdminPermissionsPage extends Page
     public function profilePermissionRows(): array
     {
         $defaultKeys = $this->defaultPermissionKeysForRole($this->selectedProfileRole);
-        $overrides = AdminPermissionGrant::query()
-            ->where('group_role', $this->selectedProfileRole)
-            ->get(['permission_key', 'is_revoked']);
-        $extraKeys = $overrides->where('is_revoked', false)->pluck('permission_key')->all();
-        $revokedKeys = $overrides->where('is_revoked', true)->pluck('permission_key')->all();
 
-        return $this->permissionRows($defaultKeys, $extraKeys, [], $revokedKeys, true);
+        return $this->permissionRows(
+            $defaultKeys,
+            $this->profileGrantKeys,
+            [],
+            $this->profileRevokedKeys,
+            true,
+        );
     }
 
     public function profilePermissionsDirty(): bool
@@ -391,9 +406,7 @@ class AdminPermissionsPage extends Page
             ->get(['permission_key', 'is_revoked']);
         $extraKeys = $roleOverrides->where('is_revoked', false)->pluck('permission_key')->all();
         $revokedKeys = $roleOverrides->where('is_revoked', true)->pluck('permission_key')->all();
-        $directKeys = $user->adminPermissionGrants()->where('is_revoked', false)->pluck('permission_key')->all();
-
-        return $this->permissionRows($roleKeys, $extraKeys, $directKeys, $revokedKeys);
+        return $this->permissionRows($roleKeys, $extraKeys, $this->userGrantKeys, $revokedKeys);
     }
 
     public function userPermissionsDirty(): bool
@@ -468,6 +481,21 @@ class AdminPermissionsPage extends Page
     {
         $this->userGrantKeys = $this->selectedUser()?->adminPermissionGrants()->where('is_revoked', false)->pluck('permission_key')->all() ?? [];
         $this->userOriginalGrantKeys = $this->userGrantKeys;
+    }
+
+    private function resetProfilePermissionState(): void
+    {
+        $this->profileGrantKeys = [];
+        $this->profileOriginalGrantKeys = [];
+        $this->profileRevokedKeys = [];
+        $this->profileOriginalRevokedKeys = [];
+    }
+
+    private function resetUserPermissionState(): void
+    {
+        $this->selectedUserId = null;
+        $this->userGrantKeys = [];
+        $this->userOriginalGrantKeys = [];
     }
 
     private function normalizedKeys(array $keys): array

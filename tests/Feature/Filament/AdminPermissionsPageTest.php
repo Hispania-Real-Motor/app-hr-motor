@@ -469,18 +469,101 @@ class AdminPermissionsPageTest extends TestCase
         $component->assertSet('selectedProfileRole', User::ROLE_ADMIN);
     }
 
-    public function test_profile_selection_is_preserved_while_there_are_unsaved_changes(): void
+    public function test_switching_profiles_discards_unsaved_changes_and_reloads_the_new_profile(): void
     {
         $admin = User::factory()->create(['role' => User::ROLE_ADMIN, 'is_active' => true]);
 
         Livewire::actingAs($admin);
 
-        Livewire::test(AdminPermissionsPage::class)
+        $component = Livewire::test(AdminPermissionsPage::class)
             ->call('selectProfile', User::ROLE_INFORMATION_TECHNOLOGY)
             ->call('toggleProfilePermission', 'users.manage')
             ->call('selectProfile', User::ROLE_COMMERCIAL)
-            ->assertSet('selectedProfileRole', User::ROLE_INFORMATION_TECHNOLOGY)
-            ->assertNotified('Guarda o descarta los cambios antes de cambiar de perfil.');
+            ->assertSet('selectedProfileRole', User::ROLE_COMMERCIAL)
+            ->assertSet('profileGrantKeys', ['videos.view', 'rankings.view'])
+            ->assertSet('profileOriginalGrantKeys', ['videos.view', 'rankings.view']);
+
+        $this->assertFalse($component->instance()->profilePermissionsDirty());
+
+        $this->assertDatabaseMissing('admin_permission_grants', [
+            'group_role' => User::ROLE_COMMERCIAL,
+            'permission_key' => 'users.manage',
+        ]);
+    }
+
+    public function test_saved_profile_changes_are_isolated_when_returning_to_another_profile(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN, 'is_active' => true]);
+
+        Livewire::actingAs($admin);
+
+        $component = Livewire::test(AdminPermissionsPage::class)
+            ->call('selectProfile', User::ROLE_MANAGER)
+            ->call('toggleProfilePermission', 'backoffice.rankings.manage')
+            ->call('saveProfilePermissions')
+            ->call('selectProfile', User::ROLE_USER)
+            ->assertSet('profileGrantKeys', [])
+            ->call('selectProfile', User::ROLE_MANAGER)
+            ->assertSet('profileGrantKeys', ['backoffice.rankings.manage']);
+
+        $this->assertFalse($component->instance()->profilePermissionsDirty());
+    }
+
+    public function test_switching_users_discards_unsaved_direct_grants_and_loads_the_new_user(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN, 'is_active' => true]);
+        $userA = User::factory()->create(['role' => User::ROLE_USER, 'extra_role' => null, 'is_active' => true]);
+        $userB = User::factory()->create(['role' => User::ROLE_USER, 'extra_role' => null, 'is_active' => true]);
+
+        Livewire::actingAs($admin);
+
+        $component = Livewire::test(AdminPermissionsPage::class)
+            ->call('switchTab', 'users')
+            ->call('selectUser', $userA->id)
+            ->call('toggleUserPermission', 'backoffice.rankings.manage')
+            ->call('selectUser', $userB->id)
+            ->assertSet('selectedUserId', $userB->id)
+            ->assertSet('userGrantKeys', [])
+            ->assertSet('userOriginalGrantKeys', []);
+
+        $this->assertFalse($component->instance()->userPermissionsDirty());
+
+        $this->assertDatabaseMissing('admin_permission_grants', [
+            'user_id' => $userA->id,
+            'permission_key' => 'backoffice.rankings.manage',
+        ]);
+    }
+
+    public function test_switching_between_profile_and_user_modes_clears_both_editors(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN, 'is_active' => true]);
+        $target = User::factory()->create(['role' => User::ROLE_USER, 'extra_role' => null, 'is_active' => true]);
+
+        Livewire::actingAs($admin);
+
+        $component = Livewire::test(AdminPermissionsPage::class)
+            ->call('selectProfile', User::ROLE_MANAGER)
+            ->call('toggleProfilePermission', 'backoffice.rankings.manage')
+            ->call('switchTab', 'users')
+            ->assertSet('profileGrantKeys', [])
+            ->call('selectUser', $target->id)
+            ->call('toggleUserPermission', 'backoffice.rankings.manage')
+            ->call('switchTab', 'profiles')
+            ->assertSet('userGrantKeys', [])
+            ->assertSet('selectedUserId', null)
+            ->assertSet('selectedProfileRole', User::ROLE_MANAGER)
+            ->assertSet('profileGrantKeys', []);
+
+        $this->assertFalse($component->instance()->userPermissionsDirty());
+        $this->assertFalse($component->instance()->profilePermissionsDirty());
+        $this->assertDatabaseMissing('admin_permission_grants', [
+            'group_role' => User::ROLE_MANAGER,
+            'permission_key' => 'backoffice.rankings.manage',
+        ]);
+        $this->assertDatabaseMissing('admin_permission_grants', [
+            'user_id' => $target->id,
+            'permission_key' => 'backoffice.rankings.manage',
+        ]);
     }
 
     public function test_admin_has_every_catalogued_permission_and_cannot_edit_admin_profile(): void

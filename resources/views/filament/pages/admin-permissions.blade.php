@@ -10,6 +10,7 @@
         </x-filament::section>
 
         @if ($activeTab === 'profiles')
+            <div wire:key="permissions-mode-profiles">
             <x-filament::section>
                 <x-slot name="heading">Perfiles</x-slot>
                 <x-slot name="description">Selecciona un perfil para consultar y gestionar sus permisos adicionales.</x-slot>
@@ -31,7 +32,7 @@
                         <h3 class="mb-3 text-sm font-semibold text-gray-950 dark:text-white">Roles base</h3>
                         <div class="flex flex-wrap gap-3" role="list" aria-label="Roles base">
                             @foreach ($baseProfiles as $role => $profile)
-                                <x-filament::button wire:click="selectProfile('{{ $role }}')" :color="$selectedProfileRole === $role ? 'primary' : 'gray'" size="sm" :aria-pressed="$selectedProfileRole === $role" role="listitem">
+                                <x-filament::button wire:key="profile-select-{{ $role }}" wire:click="selectProfile('{{ $role }}')" :color="$selectedProfileRole === $role ? 'primary' : 'gray'" size="sm" :aria-pressed="$selectedProfileRole === $role" role="listitem">
                                     {{ $profile['label'] }}
                                 </x-filament::button>
                             @endforeach
@@ -44,7 +45,7 @@
                         <h3 class="mb-3 text-sm font-semibold text-gray-950 dark:text-white">Roles adicionales</h3>
                         <div class="flex flex-wrap gap-3" role="list" aria-label="Roles adicionales">
                             @foreach ($extraProfiles as $role => $profile)
-                                <x-filament::button wire:click="selectProfile('{{ $role }}')" :color="$selectedProfileRole === $role ? 'primary' : 'gray'" size="sm" :aria-pressed="$selectedProfileRole === $role" role="listitem">
+                                <x-filament::button wire:key="profile-select-{{ $role }}" wire:click="selectProfile('{{ $role }}')" :color="$selectedProfileRole === $role ? 'primary' : 'gray'" size="sm" :aria-pressed="$selectedProfileRole === $role" role="listitem">
                                     {{ $profile['label'] }}
                                 </x-filament::button>
                             @endforeach
@@ -90,7 +91,7 @@
                                 <div class="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]"><h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ $module }}</h3></div>
                                 <div class="divide-y divide-gray-200 dark:divide-white/10">
                                     @foreach ($permissions as $permission)
-                                        <label class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-1 px-4 py-4 transition {{ $permission['is_locked'] ? 'cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03]' }}">
+                                        <label wire:key="profile-{{ $selectedProfileRole }}-permission-{{ $permission['key'] }}" class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-1 px-4 py-4 transition {{ $permission['is_locked'] ? 'cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03]' }}">
                                             <div class="row-span-2 pt-0.5">
                                                 <x-filament::input.checkbox value="{{ $permission['key'] }}" :checked="$permission['is_checked']" wire:click="toggleProfilePermission('{{ $permission['key'] }}')" :disabled="$permission['is_locked']" class="shrink-0" />
                                             </div>
@@ -122,14 +123,15 @@
                         <x-filament::button wire:click="saveProfilePermissions" wire:loading.attr="disabled" wire:target="saveProfilePermissions" :disabled="! $this->profilePermissionsDirty()" icon="heroicon-o-check"><span wire:loading.remove wire:target="saveProfilePermissions">Guardar permisos adicionales</span><span wire:loading wire:target="saveProfilePermissions">Guardando permisos...</span></x-filament::button>
                     </div>
             </x-filament::section>
+            </div>
         @else
-            <div class="grid gap-6 xl:grid-cols-12">
+            <div class="grid gap-6 xl:grid-cols-12" wire:key="permissions-mode-users">
                 <div class="xl:col-span-4"><x-filament::section>
                     <x-slot name="heading">Usuarios</x-slot><x-slot name="description">Busca un usuario para consultar y gestionar sus permisos directos.</x-slot>
                     <x-filament::input.wrapper><x-filament::input type="search" wire:model.live.debounce.300ms="userSearch" placeholder="Buscar por nombre o correo" aria-label="Buscar usuarios" /></x-filament::input.wrapper>
                     <div class="mt-4 divide-y divide-gray-200 overflow-hidden rounded-xl border border-gray-200 dark:divide-white/10 dark:border-white/10">
                         @forelse ($this->users() as $user)
-                            <button type="button" wire:click="selectUser({{ $user->id }})" aria-pressed="{{ $selectedUserId === $user->id ? 'true' : 'false' }}" class="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-600 dark:hover:bg-white/5 {{ $selectedUserId === $user->id ? 'bg-primary-50 dark:bg-primary-500/10' : 'bg-transparent' }}"><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-950 dark:text-white">{{ $user->name }}</span><span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ $user->email }}</span><span class="mt-2 flex flex-wrap gap-1.5"><x-filament::badge color="gray" size="sm">{{ \App\Models\User::baseRoleLabels()[$user->role] ?? $user->role }}</x-filament::badge>@if ($user->extra_role)<x-filament::badge color="gray" size="sm">{{ \App\Models\User::extraRoleLabels()[$user->extra_role] ?? $user->extra_role }}</x-filament::badge>@endif</span></span>@if ($selectedUserId === $user->id)<x-filament::icon icon="heroicon-m-check" class="h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />@endif</button>
+                            <button type="button" wire:key="user-select-{{ $user->id }}" wire:click="selectUser({{ $user->id }})" aria-pressed="{{ $selectedUserId === $user->id ? 'true' : 'false' }}" class="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-600 dark:hover:bg-white/5 {{ $selectedUserId === $user->id ? 'bg-primary-50 dark:bg-primary-500/10' : 'bg-transparent' }}"><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-950 dark:text-white">{{ $user->name }}</span><span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ $user->email }}</span><span class="mt-2 flex flex-wrap gap-1.5"><x-filament::badge color="gray" size="sm">{{ \App\Models\User::baseRoleLabels()[$user->role] ?? $user->role }}</x-filament::badge>@if ($user->extra_role)<x-filament::badge color="gray" size="sm">{{ \App\Models\User::extraRoleLabels()[$user->extra_role] ?? $user->extra_role }}</x-filament::badge>@endif</span></span>@if ($selectedUserId === $user->id)<x-filament::icon icon="heroicon-m-check" class="h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400" />@endif</button>
                         @empty
                             <div class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No se han encontrado usuarios.</div>
                         @endforelse
@@ -143,7 +145,7 @@
                             @foreach ($this->permissionGroups() as $module => $permissions)
                                 <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-white/10"><div class="border-b border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]"><h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ $module }}</h3></div><div class="divide-y divide-gray-200 dark:divide-white/10">
                                     @foreach ($permissions as $permission)
-                                        <label class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-1 px-4 py-4 transition {{ $permission['is_locked'] ? 'cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03]' }}">
+                                        <label wire:key="user-{{ $selectedUserId }}-permission-{{ $permission['key'] }}" class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-1 px-4 py-4 transition {{ $permission['is_locked'] ? 'cursor-not-allowed bg-gray-50/50 dark:bg-white/[0.02]' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.03]' }}">
                                             <div class="row-span-2 pt-0.5">
                                                 <x-filament::input.checkbox value="{{ $permission['key'] }}" :checked="$permission['is_checked']" wire:click="toggleUserPermission('{{ $permission['key'] }}')" :disabled="$permission['is_locked']" class="shrink-0" />
                                             </div>
