@@ -409,9 +409,23 @@
                     <article class="flex max-h-[calc(100vh-7rem)] xl:max-h-[calc(100vh-10rem)] flex-col overflow-hidden rounded-[2rem] border border-brand-secondary/10 bg-white p-6 shadow-sm">
                         <div class="flex items-center justify-between gap-3 border-b border-brand-secondary/10 pb-4">
                             <h2 class="text-xl font-bold tracking-tight text-brand-secondary">Hilo de conversación</h2>
-                            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-brand-secondary/40">
-                                {{ $conversationMessagesCount }} mensajes
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-[0.18em] text-brand-secondary/40">
+                                    {{ $conversationMessagesCount }} mensajes
+                                </span>
+                                <button
+                                    type="button"
+                                    aria-label="Recargar conversación"
+                                    title="Recargar conversación"
+                                    data-ticket-conversation-reload
+                                    onclick="reloadTicketPage(this)"
+                                    class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl border border-brand-secondary/15 bg-slate-50 text-brand-secondary/55 transition-colors hover:border-brand-secondary/25 hover:bg-slate-100 hover:text-brand-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+                                >
+                                    <svg class="ticket-refresh-icon h-4 w-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path fill="currentColor" d="M4,12a1,1,0,0,1-2,0A9.983,9.983,0,0,1,18.242,4.206V2.758a1,1,0,1,1,2,0v4a1,1,0,0,1-1,1h-4a1,1,0,0,1,0-2h1.743A7.986,7.986,0,0,0,4,12Zm17-1a1,1,0,0,0-1,1A7.986,7.986,0,0,1,7.015,18.242H8.757a1,1,0,1,0,0-2h-4a1,1,0,0,0-1,1v4a1,1,0,0,0,2,0V19.794A9.984,9.984,0,0,0,22,12,1,1,0,0,0,21,11Z" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
                         <div
@@ -949,7 +963,36 @@
         </div>
     </main>
 
+    <style>
+        .ticket-refresh-icon.is-reloading {
+            animation: ticket-refresh-spin 500ms linear 1;
+        }
+
+        @keyframes ticket-refresh-spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
     <script>
+        window.reloadTicketPage = (button) => {
+            if (!button || button.disabled) {
+                return;
+            }
+
+            const icon = button.querySelector('.ticket-refresh-icon');
+
+            button.disabled = true;
+            icon?.classList.add('is-reloading');
+
+            window.setTimeout(() => window.location.reload(), 500);
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             const scrollStorageKey = `ticket-page-scroll:{{ $ticket->id }}`;
             const restoreStoredScroll = () => {
