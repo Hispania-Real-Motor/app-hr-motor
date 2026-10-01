@@ -79,11 +79,12 @@
             data-selected-conversation-id="{{ $selectedConversation?->id ?? '' }}"
             data-chat-selected-conversation-is-disabled="{{ $selectedConversationIsDisabled ? '1' : '0' }}"
             data-chat-composer-disabled="{{ $composerDisabled ? '1' : '0' }}"
+            data-chat-mobile-sidebar-open="false"
         >
-        <div class="fixed inset-0 top-[calc(5rem+1px)] z-40 hidden bg-slate-950/20 md:hidden" data-chat-mobile-sidebar-backdrop onclick="window.chatToggleMobileSidebar?.(false)"></div>
-        <aside class="fixed left-0 top-[calc(5rem+1px)] z-50 flex h-[calc(100dvh-5rem-1px)] w-[21rem] max-w-[85vw] -translate-x-full overflow-hidden border-r border-slate-200 bg-white shadow-[12px_0_40px_rgba(15,23,42,0.04)] will-change-transform transform-gpu transition-[width,min-width,max-width,transform] duration-300 ease-in-out md:static md:z-auto md:h-full md:max-w-[21rem] md:translate-x-0" data-chat-sidebar>
+        <div class="fixed inset-0 top-[calc(5rem+1px)] z-40 invisible opacity-0 pointer-events-none bg-slate-950/20 transition-opacity duration-300 md:hidden" aria-hidden="true" data-chat-mobile-sidebar-backdrop data-chat-sidebar-overlay></div>
+        <aside class="fixed left-0 top-[calc(5rem+1px)] z-50 flex h-[calc(100dvh-5rem-1px)] w-[4.75rem] max-w-[4.75rem] translate-x-0 overflow-hidden border-r border-slate-200 bg-white shadow-[12px_0_40px_rgba(15,23,42,0.04)] will-change-transform transform-gpu transition-[width,min-width,max-width,transform] duration-300 ease-in-out md:static md:z-auto md:h-full md:w-[21rem] md:max-w-[21rem] md:translate-x-0" aria-label="Conversaciones" data-chat-sidebar>
             <div class="relative h-full w-full">
-            <div data-chat-sidebar-expanded-shell class="absolute inset-0 flex h-full flex-col opacity-100 translate-x-0 pointer-events-auto transition-all duration-300 ease-in-out">
+            <div data-chat-sidebar-expanded-shell aria-hidden="true" class="absolute inset-0 flex h-full flex-col opacity-0 translate-x-[-8px] pointer-events-none transition-all duration-300 ease-in-out md:opacity-100 md:translate-x-0 md:pointer-events-auto">
             <div class="flex min-h-[4.75rem] items-center border-b border-slate-200 px-4 py-2">
                 <div class="flex w-full items-center gap-2">
                         <button type="button" data-chat-sidebar-tab="favorites" aria-pressed="false"
@@ -111,11 +112,12 @@
 
                             <button
                                 type="button"
-                                class="hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-brand-primary md:inline-flex"
-                                aria-label="Contraer panel lateral"
-                                aria-expanded="true"
+                                class="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-brand-primary"
+                                aria-label="Cerrar conversaciones"
+                                title="Cerrar conversaciones"
+                                aria-expanded="false"
                                 data-chat-sidebar-collapse-button
-                                onclick="window.chatSetSidebarCollapsed?.(true)"
+                                data-chat-sidebar-close
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="m15 18-6-6 6-6"></path>
@@ -385,16 +387,16 @@
             </div>
             </div>
 
-            <div class="absolute inset-0 flex h-full w-[4.75rem] flex-col items-center justify-center border-r border-slate-200 bg-white px-2 py-4 shadow-[12px_0_40px_rgba(15,23,42,0.04)] opacity-0 pointer-events-none translate-x-2 scale-95 transition-all duration-300 ease-in-out" data-chat-sidebar-collapsed-shell>
+            <div class="absolute inset-0 flex h-full w-[4.75rem] flex-col items-center justify-center border-r border-slate-200 bg-white px-2 py-4 shadow-[12px_0_40px_rgba(15,23,42,0.04)] opacity-100 pointer-events-auto translate-x-0 scale-100 transition-all duration-300 ease-in-out md:opacity-0 md:pointer-events-none md:translate-x-2 md:scale-95" aria-hidden="false" data-chat-sidebar-collapsed-shell data-chat-mobile-sidebar-rail>
                 <button
                     type="button"
                     data-chat-sidebar-expand-button
+                    data-chat-sidebar-toggle
                     class="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-brand-primary"
                     aria-label="Expandir panel lateral"
                     aria-expanded="false"
-                    onclick="window.chatSetSidebarCollapsed?.(false)"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-chat-mobile-sidebar-icon>
                         <path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"></path>
                     </svg>
                 </button>
@@ -943,26 +945,26 @@
                     </form>
                 </footer>
             @else
-                <div class="flex flex-1 items-center justify-center px-6 py-12 sm:px-10" data-chat-empty-state>
-                    <div class="flex max-w-lg flex-col items-center text-center">
-                        <div class="relative h-52 w-64 sm:h-60 sm:w-72" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1 top-1 h-16 w-20 rotate-[-12deg] text-brand-secondary/35 sm:left-2 sm:top-2" viewBox="0 0 80 64" fill="none">
+                <div class="flex min-w-0 w-full max-w-full flex-1 items-center justify-center overflow-x-hidden px-4 py-10 pl-[5.75rem] sm:px-10 sm:py-12 sm:pl-[6.75rem] md:px-6 md:py-12 md:pl-6" data-chat-empty-state>
+                    <div class="flex w-full min-w-0 max-w-full flex-col items-center text-center">
+                        <div class="relative h-44 w-52 sm:h-60 sm:w-72" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1 top-1 h-12 w-16 rotate-[-12deg] text-brand-secondary/35 sm:left-2 sm:top-2 sm:h-16 sm:w-20" viewBox="0 0 80 64" fill="none">
                                 <path d="M12 11.5C12 6.81 15.81 3 20.5 3h38C63.19 3 67 6.81 67 11.5v22C67 38.19 63.19 42 58.5 42H39L25 53v-11h-4.5C15.81 42 12 38.19 12 33.5v-22Z" fill="currentColor" fill-opacity=".22"/>
                                 <path d="M26 18h27M26 27h17" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".7"/>
                             </svg>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute bottom-1 right-0 h-14 w-20 rotate-[10deg] text-brand-primary/35 sm:bottom-2 sm:right-1" viewBox="0 0 80 64" fill="none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute bottom-1 right-0 h-11 w-16 rotate-[10deg] text-brand-primary/35 sm:bottom-2 sm:right-1 sm:h-14 sm:w-20" viewBox="0 0 80 64" fill="none">
                                 <path d="M13 13.5C13 8.81 16.81 5 21.5 5h37C63.19 5 67 8.81 67 13.5v20C67 38.19 63.19 42 58.5 42H42L27 54V42h-5.5C16.81 42 13 38.19 13 33.5v-20Z" fill="currentColor" fill-opacity=".18"/>
                                 <path d="M27 20h26M27 29h15" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".68"/>
                             </svg>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 text-brand-secondary sm:h-60 sm:w-60" viewBox="0 0 160 160" fill="none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 text-brand-secondary sm:h-60 sm:w-60" viewBox="0 0 160 160" fill="none">
                                 <rect x="28" y="34" width="104" height="76" rx="14" fill="currentColor" fill-opacity=".06" stroke="currentColor" stroke-width="3"/>
                                 <path d="m31 48 43.5 31.5a9.5 9.5 0 0 0 11 0L129 48" stroke="#E51A2E" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
                                 <path d="M31 101 61 74M129 101 99 74" stroke="currentColor" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/>
                             </svg>
                         </div>
                         <p class="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary">Tu espacio de comunicación</p>
-                        <h2 class="mt-3 text-2xl font-bold tracking-tight text-brand-secondary sm:text-3xl">Selecciona una conversación</h2>
-                        <p class="mt-3 max-w-sm text-sm leading-6 text-slate-500 sm:text-base">
+                        <h2 class="mt-3 w-full max-w-full break-words text-xl font-bold tracking-tight text-brand-secondary sm:text-3xl">Selecciona una conversación</h2>
+                        <p class="mt-3 w-full max-w-sm break-words text-sm leading-6 text-slate-500 sm:text-base">
                             Selecciona una conversación de la lista para empezar.
                         </p>
                     </div>
@@ -1100,6 +1102,7 @@
         <script>
             document.addEventListener('DOMContentLoaded', () => {
                 const root = document.querySelector('[data-chat-root]');
+                const body = document.body;
                 const sidebar = document.querySelector('[data-chat-sidebar]');
                 const wrapper = document.querySelector('[data-chat-messages-wrapper]');
                 const messagesContainer = document.querySelector('[data-chat-messages]');
@@ -1244,6 +1247,9 @@
                 let composerMentionIds = [];
                 let sidebarCollapsed = false;
                 let mobileSidebarOpen = false;
+                let chatBodyScrollLocked = false;
+                let previousBodyOverflow = '';
+                let previousBodyOverflowHiddenClass = false;
                 let composerDropDepth = 0;
                 let composerDropActive = false;
                 let conversationDropActive = false;
@@ -1828,13 +1834,15 @@
                     sidebarCollapsedShell.classList.toggle('pointer-events-none', !sidebarCollapsed);
                     sidebarCollapseButton.classList.toggle('hidden', sidebarCollapsed);
                     sidebarExpandButton.classList.toggle('hidden', !sidebarCollapsed);
+                    sidebarExpandedShell.setAttribute('aria-hidden', sidebarCollapsed ? 'true' : 'false');
+                    sidebarCollapsedShell.setAttribute('aria-hidden', sidebarCollapsed ? 'false' : 'true');
                     sidebarCollapseButton.setAttribute('aria-expanded', sidebarCollapsed ? 'false' : 'true');
                     sidebarExpandButton.setAttribute('aria-expanded', sidebarCollapsed ? 'true' : 'false');
                 };
                 window.chatSetSidebarCollapsed = setSidebarCollapsed;
 
                 const setMobileSidebarOpen = (open) => {
-                    if (!mobileSidebarBackdrop || !mobileSidebarToggleButtons.length || !mobileSidebarIcons.length) {
+                    if (!mobileSidebarBackdrop || !mobileSidebarIcons.length) {
                         return;
                     }
 
@@ -1842,31 +1850,79 @@
 
                     if (window.matchMedia('(max-width: 767px)').matches) {
                         sidebarCollapsed = false;
-                        sidebar.style.removeProperty('width');
-                        sidebar.style.removeProperty('min-width');
-                        sidebar.style.removeProperty('max-width');
-                        sidebarExpandedShell.classList.add('opacity-100', 'translate-x-0', 'pointer-events-auto');
-                        sidebarExpandedShell.classList.remove('opacity-0', 'translate-x-[-8px]', 'pointer-events-none');
-                        sidebarCollapsedShell.classList.add('opacity-0', 'translate-x-2', 'scale-95', 'pointer-events-none');
-                        sidebarCollapsedShell.classList.remove('opacity-100', 'translate-x-0', 'scale-100', 'pointer-events-auto');
-                        sidebarCollapseButton.classList.add('hidden');
-                        sidebarExpandButton.classList.add('hidden');
-                        sidebar.classList.toggle('-translate-x-full', !mobileSidebarOpen);
-                        sidebar.classList.toggle('translate-x-0', mobileSidebarOpen);
-                        sidebar.classList.toggle('pointer-events-none', !mobileSidebarOpen);
-                        sidebar.classList.toggle('pointer-events-auto', mobileSidebarOpen);
+                        sidebar.style.width = mobileSidebarOpen ? 'min(20rem, 85vw)' : '4.75rem';
+                        sidebar.style.minWidth = mobileSidebarOpen ? 'min(20rem, 85vw)' : '4.75rem';
+                        sidebar.style.maxWidth = mobileSidebarOpen ? '85vw' : '4.75rem';
+                        sidebarExpandedShell.classList.toggle('opacity-100', mobileSidebarOpen);
+                        sidebarExpandedShell.classList.toggle('translate-x-0', mobileSidebarOpen);
+                        sidebarExpandedShell.classList.toggle('pointer-events-auto', mobileSidebarOpen);
+                        sidebarExpandedShell.classList.toggle('opacity-0', !mobileSidebarOpen);
+                        sidebarExpandedShell.classList.toggle('translate-x-[-8px]', !mobileSidebarOpen);
+                        sidebarExpandedShell.classList.toggle('pointer-events-none', !mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('opacity-100', !mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('translate-x-0', !mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('scale-100', !mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('pointer-events-auto', !mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('opacity-0', mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('translate-x-2', mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('scale-95', mobileSidebarOpen);
+                        sidebarCollapsedShell.classList.toggle('pointer-events-none', mobileSidebarOpen);
+                        sidebarCollapseButton.classList.toggle('hidden', !mobileSidebarOpen);
+                        sidebarExpandButton.classList.toggle('hidden', mobileSidebarOpen);
+                        sidebarExpandedShell.setAttribute('aria-hidden', mobileSidebarOpen ? 'false' : 'true');
+                        sidebarCollapsedShell.setAttribute('aria-hidden', mobileSidebarOpen ? 'true' : 'false');
+                        sidebar.classList.remove('-translate-x-full');
+                        sidebar.classList.add('translate-x-0', 'pointer-events-auto');
+                        sidebar.classList.remove('pointer-events-none');
                     }
 
-                    mobileSidebarBackdrop.classList.toggle('hidden', !mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('opacity-0', !mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('invisible', !mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('pointer-events-none', !mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('opacity-100', mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('visible', mobileSidebarOpen);
+                    mobileSidebarBackdrop.classList.toggle('pointer-events-auto', mobileSidebarOpen);
+                    mobileSidebarBackdrop.setAttribute('aria-hidden', mobileSidebarOpen ? 'false' : 'true');
+                    root.classList.toggle('chat-sidebar-open', mobileSidebarOpen);
+                    root.dataset.chatMobileSidebarOpen = mobileSidebarOpen ? 'true' : 'false';
                     mobileSidebarToggleButtons.forEach((button) => {
                         button.setAttribute('aria-expanded', mobileSidebarOpen ? 'true' : 'false');
                     });
                     mobileSidebarIcons.forEach((icon) => {
                         icon.classList.toggle('rotate-180', mobileSidebarOpen);
                     });
+                    sidebarExpandButton.setAttribute('aria-expanded', mobileSidebarOpen ? 'true' : 'false');
+                    sidebarCollapseButton.setAttribute('aria-expanded', mobileSidebarOpen ? 'true' : 'false');
+
+                    if (mobileSidebarOpen && !chatBodyScrollLocked) {
+                        previousBodyOverflow = body.style.overflow;
+                        previousBodyOverflowHiddenClass = body.classList.contains('overflow-hidden');
+                        body.style.overflow = 'hidden';
+                        body.classList.add('overflow-hidden', 'chat-sidebar-open');
+                        chatBodyScrollLocked = true;
+                    } else if (!mobileSidebarOpen && chatBodyScrollLocked) {
+                        if (previousBodyOverflow) {
+                            body.style.overflow = previousBodyOverflow;
+                        } else {
+                            body.style.removeProperty('overflow');
+                        }
+                        body.classList.toggle('overflow-hidden', previousBodyOverflowHiddenClass);
+                        body.classList.remove('chat-sidebar-open');
+                        chatBodyScrollLocked = false;
+                    } else if (!mobileSidebarOpen) {
+                        body.classList.remove('chat-sidebar-open');
+                    }
                 };
+                const openChatSidebar = () => setMobileSidebarOpen(true);
+                const closeChatSidebar = () => setMobileSidebarOpen(false);
+                window.openChatSidebar = openChatSidebar;
+                window.closeChatSidebar = closeChatSidebar;
                 window.chatToggleMobileSidebar = (nextState = null) => {
-                    setMobileSidebarOpen(nextState === null ? !mobileSidebarOpen : Boolean(nextState));
+                    if (nextState === null) {
+                        mobileSidebarOpen ? closeChatSidebar() : openChatSidebar();
+                    } else {
+                        Boolean(nextState) ? openChatSidebar() : closeChatSidebar();
+                    }
                 };
 
                 const escapeHtml = (value) => {
@@ -3950,8 +4006,12 @@
                 };
 
                 setSidebarTab(currentConversationIsGroup ? 'groups' : 'chats');
-                setSidebarCollapsed(false);
-                setMobileSidebarOpen(false);
+                if (window.matchMedia('(max-width: 767px)').matches) {
+                    closeChatSidebar();
+                } else {
+                    setSidebarCollapsed(false);
+                    closeChatSidebar();
+                }
 
                 sidebarTabButtons.forEach((button) => {
                     button.addEventListener('click', () => {
@@ -3962,21 +4022,32 @@
 
                 mobileSidebarToggleButtons.forEach((button) => {
                     button.addEventListener('click', () => {
-                        setMobileSidebarOpen(!mobileSidebarOpen);
+                        mobileSidebarOpen ? closeChatSidebar() : openChatSidebar();
                     });
                 });
 
                 sidebarCollapseButton.addEventListener('click', () => {
-                    setSidebarCollapsed(true);
+                    if (window.matchMedia('(max-width: 767px)').matches) {
+                        closeChatSidebar();
+                    } else {
+                        setSidebarCollapsed(true);
+                    }
                 });
 
                 sidebarExpandButton.addEventListener('click', () => {
-                    setSidebarCollapsed(false);
+                    if (window.matchMedia('(max-width: 767px)').matches) {
+                        openChatSidebar();
+                    } else {
+                        setSidebarCollapsed(false);
+                    }
                 });
+
+                mobileSidebarBackdrop.addEventListener('click', closeChatSidebar);
 
                 window.addEventListener('resize', () => {
                     if (window.matchMedia('(min-width: 768px)').matches) {
-                        setMobileSidebarOpen(false);
+                        closeChatSidebar();
+                        setSidebarCollapsed(sidebarCollapsed);
                     }
                 });
 
@@ -4071,6 +4142,7 @@
 
                 document.addEventListener('keydown', (event) => {
                     if (event.key === 'Escape') {
+                        closeChatSidebar();
                         closeDeleteConfirmModal();
                         closeGroupModal();
                     }
@@ -4353,7 +4425,7 @@
                     }
 
                     if (window.matchMedia('(max-width: 767px)').matches) {
-                        window.chatToggleMobileSidebar?.(false);
+                        window.closeChatSidebar?.();
                     }
                     closeMessageMenu();
                     await window.openConversationFromLink?.(link.href);

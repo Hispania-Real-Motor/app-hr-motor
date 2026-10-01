@@ -1,0 +1,126 @@
+diff --git a/resources/views/tools/chat-beta.blade.php b/resources/views/tools/chat-beta.blade.php
+index 116ab73..4b182ea 100644
+--- a/resources/views/tools/chat-beta.blade.php
++++ b/resources/views/tools/chat-beta.blade.php
+@@ -81,9 +81,9 @@ class="flex min-h-0 flex-1 w-full overflow-hidden bg-slate-100"
+             data-chat-composer-disabled="{{ $composerDisabled ? '1' : '0' }}"
+         >
+         <div class="fixed inset-0 top-[calc(5rem+1px)] z-40 hidden bg-slate-950/20 md:hidden" data-chat-mobile-sidebar-backdrop onclick="window.chatToggleMobileSidebar?.(false)"></div>
+-        <aside class="fixed left-0 top-[calc(5rem+1px)] z-50 flex h-[calc(100dvh-5rem-1px)] w-[21rem] max-w-[85vw] -translate-x-full overflow-hidden border-r border-slate-200 bg-white shadow-[12px_0_40px_rgba(15,23,42,0.04)] will-change-transform transform-gpu transition-[width,min-width,max-width,transform] duration-300 ease-in-out md:static md:z-auto md:h-full md:max-w-[21rem] md:translate-x-0" data-chat-sidebar>
++        <aside class="fixed left-0 top-[calc(5rem+1px)] z-50 flex h-[calc(100dvh-5rem-1px)] w-[4.75rem] max-w-[4.75rem] translate-x-0 overflow-hidden border-r border-slate-200 bg-white shadow-[12px_0_40px_rgba(15,23,42,0.04)] will-change-transform transform-gpu transition-[width,min-width,max-width,transform] duration-300 ease-in-out md:static md:z-auto md:h-full md:w-[21rem] md:max-w-[21rem] md:translate-x-0" data-chat-sidebar>
+             <div class="relative h-full w-full">
+-            <div data-chat-sidebar-expanded-shell class="absolute inset-0 flex h-full flex-col opacity-100 translate-x-0 pointer-events-auto transition-all duration-300 ease-in-out">
++            <div data-chat-sidebar-expanded-shell class="absolute inset-0 flex h-full flex-col opacity-0 translate-x-[-8px] pointer-events-none transition-all duration-300 ease-in-out md:opacity-100 md:translate-x-0 md:pointer-events-auto">
+             <div class="flex min-h-[4.75rem] items-center border-b border-slate-200 px-4 py-2">
+                 <div class="flex w-full items-center gap-2">
+                         <button type="button" data-chat-sidebar-tab="favorites" aria-pressed="false"
+@@ -385,16 +385,16 @@ class="h-11 w-11 cursor-pointer rounded-2xl object-cover">
+             </div>
+             </div>
+ 
+-            <div class="absolute inset-0 flex h-full w-[4.75rem] flex-col items-center justify-center border-r border-slate-200 bg-white px-2 py-4 shadow-[12px_0_40px_rgba(15,23,42,0.04)] opacity-0 pointer-events-none translate-x-2 scale-95 transition-all duration-300 ease-in-out" data-chat-sidebar-collapsed-shell>
++            <div class="absolute inset-0 flex h-full w-[4.75rem] flex-col items-center justify-center border-r border-slate-200 bg-white px-2 py-4 shadow-[12px_0_40px_rgba(15,23,42,0.04)] opacity-100 pointer-events-auto translate-x-0 scale-100 transition-all duration-300 ease-in-out md:opacity-0 md:pointer-events-none md:translate-x-2 md:scale-95" data-chat-sidebar-collapsed-shell data-chat-mobile-sidebar-rail>
+                 <button
+                     type="button"
+                     data-chat-sidebar-expand-button
+                     class="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-brand-primary"
+-                    aria-label="Expandir panel lateral"
++                    aria-label="Abrir conversaciones"
++                    title="Abrir conversaciones"
+                     aria-expanded="false"
+-                    onclick="window.chatSetSidebarCollapsed?.(false)"
+                 >
+-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
++                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform duration-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" data-chat-mobile-sidebar-icon>
+                         <path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"></path>
+                     </svg>
+                 </button>
+@@ -943,7 +943,7 @@ class="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center roun
+                     </form>
+                 </footer>
+             @else
+-                <div class="flex flex-1 items-center justify-center px-6 py-12 sm:px-10" data-chat-empty-state>
++                <div class="relative z-0 flex min-h-0 flex-1 items-center justify-center overflow-hidden px-6 py-12 sm:px-10" data-chat-empty-state>
+                     <div class="flex max-w-lg flex-col items-center text-center">
+                         <div class="relative h-52 w-64 sm:h-60 sm:w-72" aria-hidden="true">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1 top-1 h-16 w-20 rotate-[-12deg] text-brand-secondary/35 sm:left-2 sm:top-2" viewBox="0 0 80 64" fill="none">
+@@ -1842,19 +1842,29 @@ class="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-
+ 
+                     if (window.matchMedia('(max-width: 767px)').matches) {
+                         sidebarCollapsed = false;
+-                        sidebar.style.removeProperty('width');
+-                        sidebar.style.removeProperty('min-width');
+-                        sidebar.style.removeProperty('max-width');
+-                        sidebarExpandedShell.classList.add('opacity-100', 'translate-x-0', 'pointer-events-auto');
+-                        sidebarExpandedShell.classList.remove('opacity-0', 'translate-x-[-8px]', 'pointer-events-none');
+-                        sidebarCollapsedShell.classList.add('opacity-0', 'translate-x-2', 'scale-95', 'pointer-events-none');
+-                        sidebarCollapsedShell.classList.remove('opacity-100', 'translate-x-0', 'scale-100', 'pointer-events-auto');
++                        sidebar.style.width = mobileSidebarOpen ? '21rem' : '4.75rem';
++                        sidebar.style.minWidth = mobileSidebarOpen ? '21rem' : '4.75rem';
++                        sidebar.style.maxWidth = mobileSidebarOpen ? '85vw' : '4.75rem';
++                        sidebarExpandedShell.classList.toggle('opacity-100', mobileSidebarOpen);
++                        sidebarExpandedShell.classList.toggle('translate-x-0', mobileSidebarOpen);
++                        sidebarExpandedShell.classList.toggle('pointer-events-auto', mobileSidebarOpen);
++                        sidebarExpandedShell.classList.toggle('opacity-0', !mobileSidebarOpen);
++                        sidebarExpandedShell.classList.toggle('translate-x-[-8px]', !mobileSidebarOpen);
++                        sidebarExpandedShell.classList.toggle('pointer-events-none', !mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('opacity-100', !mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('translate-x-0', !mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('scale-100', !mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('pointer-events-auto', !mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('opacity-0', mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('translate-x-2', mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('scale-95', mobileSidebarOpen);
++                        sidebarCollapsedShell.classList.toggle('pointer-events-none', mobileSidebarOpen);
+                         sidebarCollapseButton.classList.add('hidden');
+-                        sidebarExpandButton.classList.add('hidden');
+-                        sidebar.classList.toggle('-translate-x-full', !mobileSidebarOpen);
+-                        sidebar.classList.toggle('translate-x-0', mobileSidebarOpen);
+-                        sidebar.classList.toggle('pointer-events-none', !mobileSidebarOpen);
+-                        sidebar.classList.toggle('pointer-events-auto', mobileSidebarOpen);
++                        sidebarExpandButton.classList.toggle('hidden', mobileSidebarOpen);
++                        sidebar.classList.remove('-translate-x-full');
++                        sidebar.classList.add('translate-x-0');
++                        sidebar.classList.toggle('pointer-events-none', false);
++                        sidebar.classList.toggle('pointer-events-auto', true);
+                     }
+ 
+                     mobileSidebarBackdrop.classList.toggle('hidden', !mobileSidebarOpen);
+@@ -3971,7 +3981,11 @@ class="h-11 w-11 shrink-0 rounded-2xl object-cover">
+                 });
+ 
+                 sidebarExpandButton.addEventListener('click', () => {
+-                    setSidebarCollapsed(false);
++                    if (window.matchMedia('(max-width: 767px)').matches) {
++                        setMobileSidebarOpen(true);
++                    } else {
++                        setSidebarCollapsed(false);
++                    }
+                 });
+ 
+                 window.addEventListener('resize', () => {
+diff --git a/tests/Feature/CompanyChatTest.php b/tests/Feature/CompanyChatTest.php
+index d32988f..f209a31 100644
+--- a/tests/Feature/CompanyChatTest.php
++++ b/tests/Feature/CompanyChatTest.php
+@@ -143,6 +143,20 @@ public function test_entering_chat_does_not_select_or_mark_a_conversation_as_rea
+ 
+         $response
+             ->assertOk()
++            ->assertSeeInOrder(['data-chat-mobile-sidebar-rail', 'data-chat-empty-state'], false)
++            ->assertSee('data-chat-sidebar-expand-button', false)
++            ->assertSee('aria-label="Abrir conversaciones"', false)
++            ->assertSee('data-chat-sidebar-expanded-shell', false)
++            ->assertSee('data-chat-search-input', false)
++            ->assertSee('data-chat-sidebar-tab="chats"', false)
++            ->assertSee('data-chat-sidebar-tab="team"', false)
++            ->assertSee('data-chat-sidebar-tab="groups"', false)
++            ->assertSee('data-chat-mobile-sidebar-backdrop', false)
++            ->assertSee('window.chatToggleMobileSidebar', false)
++            ->assertSee('setMobileSidebarOpen(!mobileSidebarOpen)', false)
++            ->assertSee('setMobileSidebarOpen(false)', false)
++            ->assertSee('setMobileSidebarOpen(true)', false)
++            ->assertDontSee('data-chat-mobile-conversations-toggle', false)
+             ->assertSee('data-chat-empty-state', false)
+             ->assertSee('Selecciona una conversación', false)
+             ->assertSee('Selecciona una conversación de la lista para empezar.', false)
