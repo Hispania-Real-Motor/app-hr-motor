@@ -178,10 +178,6 @@ class CompanyChatController extends Controller
             }
         }
 
-        if (! $selectedConversation) {
-            $selectedConversation = $conversations->first();
-        }
-
         if ($selectedConversation) {
             $selectedConversation->load([
                 'userOne',

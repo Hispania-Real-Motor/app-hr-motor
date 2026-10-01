@@ -943,12 +943,27 @@
                     </form>
                 </footer>
             @else
-                <div class="flex flex-1 items-center justify-center px-6">
-                    <div class="max-w-xl rounded-[2rem] border border-dashed border-slate-300 bg-white px-8 py-10 text-center shadow-sm">
-                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary">Chat</p>
-                        <h2 class="mt-4 text-2xl font-bold tracking-tight text-brand-secondary">Busca una conversación para empezar</h2>
-                        <p class="mt-3 text-sm leading-6 text-slate-500">
-                            Selecciona una conversación reciente, un grupo o usa la lupa para abrir un chat nuevo.
+                <div class="flex flex-1 items-center justify-center px-6 py-12 sm:px-10" data-chat-empty-state>
+                    <div class="flex max-w-lg flex-col items-center text-center">
+                        <div class="relative h-52 w-64 sm:h-60 sm:w-72" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1 top-1 h-16 w-20 rotate-[-12deg] text-brand-secondary/35 sm:left-2 sm:top-2" viewBox="0 0 80 64" fill="none">
+                                <path d="M12 11.5C12 6.81 15.81 3 20.5 3h38C63.19 3 67 6.81 67 11.5v22C67 38.19 63.19 42 58.5 42H39L25 53v-11h-4.5C15.81 42 12 38.19 12 33.5v-22Z" fill="currentColor" fill-opacity=".22"/>
+                                <path d="M26 18h27M26 27h17" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute bottom-1 right-0 h-14 w-20 rotate-[10deg] text-brand-primary/35 sm:bottom-2 sm:right-1" viewBox="0 0 80 64" fill="none">
+                                <path d="M13 13.5C13 8.81 16.81 5 21.5 5h37C63.19 5 67 8.81 67 13.5v20C67 38.19 63.19 42 58.5 42H42L27 54V42h-5.5C16.81 42 13 38.19 13 33.5v-20Z" fill="currentColor" fill-opacity=".18"/>
+                                <path d="M27 20h26M27 29h15" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".68"/>
+                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 text-brand-secondary sm:h-60 sm:w-60" viewBox="0 0 160 160" fill="none">
+                                <rect x="28" y="34" width="104" height="76" rx="14" fill="currentColor" fill-opacity=".06" stroke="currentColor" stroke-width="3"/>
+                                <path d="m31 48 43.5 31.5a9.5 9.5 0 0 0 11 0L129 48" stroke="#E51A2E" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M31 101 61 74M129 101 99 74" stroke="currentColor" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <p class="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-brand-primary">Tu espacio de comunicación</p>
+                        <h2 class="mt-3 text-2xl font-bold tracking-tight text-brand-secondary sm:text-3xl">Selecciona una conversación</h2>
+                        <p class="mt-3 max-w-sm text-sm leading-6 text-slate-500 sm:text-base">
+                            Selecciona una conversación de la lista para empezar.
                         </p>
                     </div>
                 </div>

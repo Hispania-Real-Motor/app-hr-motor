@@ -121,6 +121,38 @@ class CompanyChatTest extends TestCase
         ]);
     }
 
+    public function test_entering_chat_does_not_select_or_mark_a_conversation_as_read(): void
+    {
+        $sender = User::factory()->create();
+        $recipient = User::factory()->create();
+
+        $this->acceptChatPolicy($recipient);
+
+        $conversation = CompanyChatConversation::query()->create([
+            'user_one_id' => min($sender->id, $recipient->id),
+            'user_two_id' => max($sender->id, $recipient->id),
+        ]);
+
+        $message = CompanyChatMessage::query()->create([
+            'company_chat_conversation_id' => $conversation->id,
+            'sender_id' => $sender->id,
+            'body' => 'Mensaje no leído',
+        ]);
+
+        $response = $this->actingAs($recipient)->get(route('chat.beta'));
+
+        $response
+            ->assertOk()
+            ->assertSee('data-chat-empty-state', false)
+            ->assertSee('Selecciona una conversación', false)
+            ->assertSee('Selecciona una conversación de la lista para empezar.', false)
+            ->assertDontSee('Mensaje no leído', false)
+            ->assertDontSee('data-selected-conversation-id="' . $conversation->id . '"', false);
+
+        $message->refresh();
+        $this->assertNull($message->read_at);
+    }
+
     public function test_chat_polling_is_disabled_while_the_realtime_connection_is_active(): void
     {
         $user = User::factory()->create();
