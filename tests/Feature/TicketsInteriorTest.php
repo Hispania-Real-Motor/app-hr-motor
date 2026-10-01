@@ -1678,13 +1678,31 @@ class TicketsInteriorTest extends TestCase
             'screenshots' => [],
         ]);
 
-        $this->actingAs($creator)
-            ->get(route('tickets.show', $ticket))
+        $response = $this->actingAs($creator)
+            ->get(route('tickets.show', $ticket));
+
+        $response
             ->assertOk()
             ->assertSee('El usuario crea la incidencia', false)
             ->assertSee('Aqui se ve todo lo que ha escrito.', false)
             ->assertSee('Delegación', false)
-            ->assertSee('Delegación Norte', false);
+            ->assertSee('Delegación Norte', false)
+            ->assertSee('data-ticket-conversation-reload', false)
+            ->assertSee('aria-label="Recargar conversación"', false)
+            ->assertSee('title="Recargar conversación"', false);
+
+        $this->assertSame(1, substr_count($response->getContent(), 'data-ticket-conversation-reload'));
+        $this->assertStringNotContainsString('data-ticket-log-reload', $response->getContent());
+        $this->assertStringContainsString('h-8 w-8 cursor-pointer items-center justify-center rounded-xl border', $response->getContent());
+        $this->assertStringContainsString('h-4 w-4', $response->getContent());
+        $this->assertStringNotContainsString('this.classList.add(\'animate-spin\')', $response->getContent());
+        $this->assertStringContainsString('onclick="reloadTicketPage(this)"', $response->getContent());
+        $this->assertStringContainsString('.ticket-refresh-icon.is-reloading', $response->getContent());
+        $this->assertStringContainsString('window.setTimeout(() => window.location.reload(), 500)', $response->getContent());
+
+        preg_match('/<button[^>]*data-ticket-conversation-reload[^>]*>(.*?)<\/button>/s', $response->getContent(), $reloadButtonMatches);
+        $this->assertCount(2, $reloadButtonMatches);
+        $this->assertSame(1, substr_count($reloadButtonMatches[1], '<svg'));
     }
 
     public function test_ticket_detail_shows_requester_extra_role_next_to_the_dealership(): void
