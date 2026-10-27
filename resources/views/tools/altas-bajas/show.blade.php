@@ -1,0 +1,17 @@
+@extends('layouts.app')
+
+@section('content')
+    <main class="mx-auto max-w-4xl px-6 py-10 lg:px-8" data-provisioning data-status-url="{{ route('tools.altas-bajas.status', $provisioningRequest) }}">
+        <a href="{{ route('tools.altas-bajas') }}" class="text-sm font-semibold text-brand-primary hover:underline">← Altas y bajas</a>
+        <div class="mt-5 rounded-3xl border border-brand-secondary/10 bg-white p-6 shadow-sm md:p-8">
+            <p class="text-sm font-semibold uppercase tracking-[0.15em] text-brand-primary">Seguimiento de solicitud</p>
+            <h1 class="mt-2 text-3xl font-bold text-brand-secondary">Alta de {{ data_get($provisioningRequest->employee_data, 'name') }}</h1>
+            <div class="mt-6 flex items-center justify-between text-sm"><span class="font-semibold text-brand-secondary" data-global-status>{{ match($provisioningRequest->status) { 'pending' => 'Pendiente', 'processing' => 'Procesando', 'completed' => 'Completado', 'completed_with_errors' => 'Completado con errores', 'failed' => 'Fallido', default => $provisioningRequest->status } }}</span><span class="font-bold text-brand-primary" data-progress>{{ $provisioningRequest->progress }} %</span></div>
+            <div class="mt-3 h-3 overflow-hidden rounded-full bg-slate-100"><div data-progress-bar class="h-full rounded-full bg-brand-primary transition-all" style="width: {{ $provisioningRequest->progress }}%"></div></div>
+            <div data-steps class="mt-8 space-y-3">@foreach($provisioningRequest->steps as $step)<div class="rounded-2xl border border-brand-secondary/10 p-4"><div class="flex items-center justify-between gap-4"><span class="font-semibold text-brand-secondary">{{ config("provisioning.platforms.{$step->platform}.label", $step->platform) }}</span><span class="text-sm {{ $step->status === 'failed' ? 'text-red-600' : ($step->status === 'completed' ? 'text-emerald-600' : 'text-brand-secondary/60') }}">{{ $step->status_label }}</span></div>@if($step->message)<p class="mt-2 text-sm text-brand-secondary/70">{{ $step->message }}</p>@endif</div>@endforeach</div>
+        </div>
+    </main>
+    <script>
+        document.addEventListener('DOMContentLoaded',()=>{const root=document.querySelector('[data-provisioning]');const url=root.dataset.statusUrl;const labels={pending:'Pendiente',processing:'Procesando',completed:'Completado',completed_with_errors:'Completado con errores',failed:'Fallido',skipped:'Omitido'};const refresh=async()=>{const data=await fetch(url,{headers:{Accept:'application/json'}}).then(r=>r.json());root.querySelector('[data-global-status]').textContent=labels[data.status]??data.status;root.querySelector('[data-progress]').textContent=`${data.progress} %`;root.querySelector('[data-progress-bar]').style.width=`${data.progress}%`;root.querySelector('[data-steps]').innerHTML=data.steps.map(step=>`<div class="rounded-2xl border border-brand-secondary/10 p-4"><div class="flex items-center justify-between gap-4"><span class="font-semibold text-brand-secondary">${step.label}</span><span class="text-sm ${step.status==='failed'?'text-red-600':step.status==='completed'?'text-emerald-600':'text-brand-secondary/60'}">${labels[step.status]??step.status}</span></div>${step.message?`<p class="mt-2 text-sm text-brand-secondary/70">${step.message}</p>`:''}</div>`).join('');if(['pending','processing'].includes(data.status))setTimeout(refresh,2000);};if(['pending','processing'].includes('{{ $provisioningRequest->status }}'))setTimeout(refresh,2000);});
+    </script>
+@endsection

@@ -14,6 +14,23 @@
                 return null;
             }
 
+            if (($item['label'] ?? null) === 'Informática') {
+                $item['children'] = collect($item['children'] ?? [])
+                    ->filter(function (array $child) use ($authUser): bool {
+                        return match ($child['route'] ?? null) {
+                            'tickets.index' => app_can_see_tickets_navigation($authUser),
+                            'tools.altas-bajas' => app_can_access_tools_management($authUser),
+                            default => true,
+                        };
+                    })
+                    ->values()
+                    ->all();
+
+                if ($item['children'] === []) {
+                    return null;
+                }
+            }
+
             if (($item['label'] ?? null) === 'Empresa') {
                 $item['children'] = collect($item['children'] ?? [])
                     ->filter(function (array $child) use ($authUser): bool {
@@ -84,7 +101,7 @@
         </a>
 
         <div class="flex min-w-0 items-center gap-2 md:gap-6">
-            <div class="hidden min-w-0 items-center gap-8 xl:flex">
+            <div class="hidden min-w-0 items-center gap-6 xl:flex">
                 @foreach (collect($navItems)->filter(fn (array $item) => empty($item['children'] ?? [])) as $item)
                     @php
                         $isItemActive = $item['route'] === 'agenda.index'
@@ -122,10 +139,18 @@
                                     return false;
                                 }
 
+                                if (($child['route'] ?? null) === 'tools.altas-bajas' && ! app_can_access_tools_management($authUser)) {
+                                    return false;
+                                }
+
                                 return true;
                             })
                             ->values();
-                        $isParentActive = $visibleChildren->contains(fn ($child) => request()->routeIs($child['route']));
+                        $isParentActive = $visibleChildren->contains(function (array $child): bool {
+                            return ($child['route'] ?? null) === 'tickets.index'
+                                ? request()->routeIs('tickets.*')
+                                : request()->routeIs($child['route']);
+                        });
                     @endphp
                     @if ($visibleChildren->isEmpty())
                         @continue
@@ -1124,6 +1149,14 @@
                                     return false;
                                 }
 
+                                if (($child['route'] ?? null) === 'tickets.reports' && ! app_can_view_ticket_reports($authUser)) {
+                                    return false;
+                                }
+
+                                if (($child['route'] ?? null) === 'tools.altas-bajas' && ! app_can_access_tools_management($authUser)) {
+                                    return false;
+                                }
+
                                 return true;
                             })
                             ->values();
@@ -1132,7 +1165,11 @@
                         @continue
                     @endif
                     @foreach ($visibleChildren as $child)
-                        @php $isChildActive = request()->routeIs($child['route']); @endphp
+                        @php
+                            $isChildActive = ($child['route'] ?? null) === 'tickets.index'
+                                ? request()->routeIs('tickets.*')
+                                : request()->routeIs($child['route']);
+                        @endphp
                         <a href="{{ route($child['route']) }}" @click="open = false"
                             class="block rounded-lg px-3 py-2 text-sm font-medium transition {{ $isChildActive ? 'text-brand-primary' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900' }}">
                             {!! $child['label'] !!}

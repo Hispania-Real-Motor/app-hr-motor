@@ -170,6 +170,13 @@ if (! function_exists('app_can_see_tickets_navigation')) {
     }
 }
 
+if (! function_exists('app_can_access_tools_management')) {
+    function app_can_access_tools_management(?User $user = null): bool
+    {
+        return app_user_has_admin_permission($user ?? auth()->user(), 'tools.manage');
+    }
+}
+
 if (! function_exists('app_can_assign_tickets')) {
     function app_can_assign_tickets(?User $user = null): bool
     {

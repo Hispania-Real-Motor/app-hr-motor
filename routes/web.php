@@ -25,6 +25,7 @@ use App\Http\Controllers\CurriculumsController;
 use App\Http\Controllers\FeedbackReportController;
 use App\Http\Controllers\ItTicketController;
 use App\Http\Controllers\TicketsController;
+use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TablonController;
 use App\Http\Controllers\SalesforceAuthController;
@@ -134,6 +135,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/visor-roles', [RoleViewerController::class, 'store'])->name('role-viewer.store');
     Route::delete('/visor-roles', [RoleViewerController::class, 'destroy'])->name('role-viewer.destroy');
     Route::post('/feedback', [FeedbackReportController::class, 'store'])->name('feedback.store');
+    Route::prefix('/informatica/altas-bajas')->group(function (): void {
+        Route::get('/', [ProvisioningController::class, 'index'])->name('tools.altas-bajas');
+        Route::get('/alta', [ProvisioningController::class, 'create'])->name('tools.altas-bajas.create');
+        Route::post('/alta', [ProvisioningController::class, 'store'])->name('tools.altas-bajas.store');
+        Route::get('/{provisioningRequest}', [ProvisioningController::class, 'show'])->name('tools.altas-bajas.show');
+        Route::get('/{provisioningRequest}/estado', [ProvisioningController::class, 'status'])->name('tools.altas-bajas.status');
+    });
     Route::get('/tickets', [TicketsController::class, 'index'])->name('tickets.index');
     Route::get('/tickets/informes', [TicketsController::class, 'reports'])->name('tickets.reports');
     Route::get('/tickets/{itTicket}', [TicketsController::class, 'show'])
@@ -1146,7 +1154,7 @@ Route::middleware('auth')->group(function () {
                     ],
                     [
                         'label' => 'GitHub',
-                        'url' => 'https://github.com/IAhrmotor/app-hr-motor',
+                        'url' => 'https://github.com/Hispania-Real-Motor/app-hr-motor',
                         'image' => asset('images/tools/github.webp'),
                     ],
                     [
