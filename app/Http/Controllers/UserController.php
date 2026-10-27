@@ -14,6 +14,8 @@ use App\Rules\UserEnreachExtensionRule;
 use App\Services\CompanyChatDefaultGroupSyncService;
 use App\Services\UserDeactivationService;
 use App\Services\UserInvitationService;
+use App\Services\UserProvisioningService;
+use App\Support\UserCreationRules;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -161,72 +163,15 @@ class UserController extends Controller
         $allowedExtraRoles = array_keys(User::extraRoleLabels());
         $submittedBaseRole = $this->resolveSubmittedBaseRole($request, $authUser);
         $submittedExtraRole = $this->resolveSubmittedExtraRole($request);
-        $isRankedCommercial = $this->isRankedCommercialRole($submittedBaseRole, $submittedExtraRole);
-        $isItUser = $submittedExtraRole === User::ROLE_INFORMATION_TECHNOLOGY;
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'company_entry_date' => ['required', 'date'],
-            'job_position' => ['required', 'string', 'max:255'],
-            'role' => ['required', 'string', Rule::in($allowedBaseRoles)],
-            'extra_role' => ['nullable', 'string', Rule::in($allowedExtraRoles)],
-            'phone' => $this->agendaPhoneRules(),
-            'enreach_extension' => array_merge(
-                $this->agendaExtensionRules(),
-                [new UserEnreachExtensionRule(action: 'crear')]
-            ),
-            ...$this->itScheduleRules($isItUser),
-            'salesforce_user_id' => [
-                Rule::requiredIf($isRankedCommercial),
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('users', 'salesforce_user_id'),
-            ],
-            'dealership_id' => ['nullable', 'integer', Rule::exists('dealerships', 'id')],
-        ]);
-
-        $validator = Validator::make($validated, []);
-        $validator->validate();
+        $validated = $request->validate(UserCreationRules::for($submittedBaseRole, $submittedExtraRole, $allowedBaseRoles));
 
         try {
-            [$user, $status] = DB::transaction(function () use ($validated, $submittedBaseRole, $submittedExtraRole, $isRankedCommercial, $isItUser) {
-                $dealership = filled($validated['dealership_id'] ?? null)
-                    ? Dealership::query()->find($validated['dealership_id'])
-                    : null;
-
-                $user = User::create([
-                    'name' => $validated['name'],
-                    'email' => $validated['email'],
-                    'company_entry_date' => $validated['company_entry_date'],
-                    'job_position' => $validated['job_position'],
-                    'role' => $submittedBaseRole,
-                    'extra_role' => $submittedExtraRole,
-                    'phone' => $validated['phone'] ?? null,
-                    'enreach_extension' => $validated['enreach_extension'] ?? null,
-                    'it_monday_start' => $isItUser ? $validated['it_monday_start'] : null,
-                    'it_monday_end' => $isItUser ? $validated['it_monday_end'] : null,
-                    'it_tuesday_start' => $isItUser ? $validated['it_tuesday_start'] : null,
-                    'it_tuesday_end' => $isItUser ? $validated['it_tuesday_end'] : null,
-                    'it_wednesday_start' => $isItUser ? $validated['it_wednesday_start'] : null,
-                    'it_wednesday_end' => $isItUser ? $validated['it_wednesday_end'] : null,
-                    'it_thursday_start' => $isItUser ? $validated['it_thursday_start'] : null,
-                    'it_thursday_end' => $isItUser ? $validated['it_thursday_end'] : null,
-                    'it_friday_start' => $isItUser ? $validated['it_friday_start'] : null,
-                    'it_friday_end' => $isItUser ? $validated['it_friday_end'] : null,
-                    'salesforce_user_id' => $isRankedCommercial ? $validated['salesforce_user_id'] : null,
-                    'dealership' => $dealership?->name,
-                    'dealership_id' => $dealership?->id,
-                    'password' => Hash::make(Str::password(32)),
-                    'is_active' => false,
-                    'must_change_password' => true,
-                    'activated_at' => null,
-                    'invitation_sent_at' => now(),
-                ]);
-
-                return [$user, $this->sendInvitationLink($user)];
-            });
+            $user = DB::transaction(fn (): User => app(UserProvisioningService::class)->create([
+                ...$validated,
+                'role' => $submittedBaseRole,
+                'extra_role' => $submittedExtraRole,
+            ]));
+            $status = $this->sendInvitationLink($user);
         } catch (Throwable $exception) {
             report($exception);
 

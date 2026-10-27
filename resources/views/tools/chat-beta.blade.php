@@ -20,7 +20,7 @@
         $selectedParticipantProfileUrl = $selectedParticipant ? route('users.show', $selectedParticipant) : '#';
         $selectedParticipantFavoriteToggleUrl = $selectedParticipant ? route('chat.beta.favorites.toggle', $selectedParticipant) : '#';
         $policyAccepted = $policyAccepted ?? true;
-        $chatUnreadTotal = (int) ($conversations->sum('unread_messages_count') ?? 0);
+        $chatUnreadTotal = (int) ($chatUnreadTotal ?? $conversations->sum('unread_messages_count'));
         $groupUnreadTotal = (int) ($chatGroups->sum(fn ($chatGroup) => (int) ($chatGroup->conversation?->unread_messages_count ?? 0)) ?? 0);
         $chatUnreadBadgeLabel = $chatUnreadTotal > 9 ? '+9' : (string) $chatUnreadTotal;
         $groupUnreadBadgeLabel = $groupUnreadTotal > 9 ? '+9' : (string) $groupUnreadTotal;
@@ -64,7 +64,7 @@
 
     @php
         $privateConversations = $conversations->filter(fn ($conversation) => ! $conversation->isGroupConversation())->values();
-        $chatUnreadTotal = (int) ($privateConversations->sum('unread_messages_count') ?? 0);
+        $chatUnreadTotal = (int) ($chatUnreadTotal ?? $privateConversations->sum('unread_messages_count'));
     @endphp
 
         <section
@@ -79,6 +79,7 @@
             data-selected-conversation-id="{{ $selectedConversation?->id ?? '' }}"
             data-chat-selected-conversation-is-disabled="{{ $selectedConversationIsDisabled ? '1' : '0' }}"
             data-chat-composer-disabled="{{ $composerDisabled ? '1' : '0' }}"
+            data-chat-next-conversation-cursor="{{ $nextConversationCursor ?? '' }}"
             data-chat-mobile-sidebar-open="false"
         >
         <div class="fixed inset-0 top-[calc(5rem+1px)] z-40 invisible opacity-0 pointer-events-none bg-slate-950/20 transition-opacity duration-300 md:hidden" aria-hidden="true" data-chat-mobile-sidebar-backdrop data-chat-sidebar-overlay></div>
@@ -128,7 +129,7 @@
                 </div>
             </div>
 
-            <div class="flex-1 min-h-0 overflow-y-auto">
+            <div class="flex-1 min-h-0 overflow-y-auto" data-chat-sidebar-scroll>
                 <div class="border-b border-slate-200 px-4 py-3">
                     <div class="grid grid-cols-3 rounded-2xl bg-slate-100 p-1 text-xs font-semibold">
                         <button type="button" data-chat-sidebar-tab="chats" aria-pressed="true"
@@ -281,6 +282,8 @@
                             </div>
                         @endforelse
                     </div>
+                    <div class="hidden px-4 py-4 text-center text-sm text-slate-500" data-chat-conversations-loader role="status" aria-live="polite">Cargando conversaciones…</div>
+                    <button type="button" class="{{ empty($nextConversationCursor) ? 'hidden' : '' }} w-full cursor-pointer px-4 py-4 text-center text-sm font-medium text-brand-primary" data-chat-conversations-more>Mostrar más conversaciones</button>
                 </div>
 
                 <div class="hidden" data-chat-sidebar-panel="team">
@@ -405,6 +408,12 @@
 
         <section class="relative flex min-w-0 flex-1 flex-col bg-slate-100" data-chat-conversation-pane>
             @if ($selectedConversation)
+                <div class="absolute inset-0 z-30 hidden items-center justify-center bg-slate-100" data-chat-conversation-loader role="status" aria-live="polite">
+                    <div class="flex flex-col items-center gap-3 text-sm font-medium text-slate-600">
+                        <span class="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-primary" aria-hidden="true"></span>
+                        Cargando conversación…
+                    </div>
+                </div>
                 <div class="pointer-events-none absolute inset-0 z-20 hidden rounded-none border-2 border-dashed border-sky-400/80 bg-sky-50/85 px-6 py-6 shadow-[inset_0_0_0_1px_rgba(186,230,253,0.65)] backdrop-blur-[1px]" data-chat-conversation-dropzone-hint aria-hidden="true">
                     <div class="flex h-full items-center justify-center">
                         <div class="max-w-xl rounded-[1.6rem] border border-sky-200 bg-white/95 px-6 py-5 text-center shadow-xl">
@@ -1115,6 +1124,7 @@
                 const composerShell = document.querySelector('[data-chat-composer-shell]');
                 const composerDropzoneHint = document.querySelector('[data-chat-dropzone-hint]');
                 const conversationPane = document.querySelector('[data-chat-conversation-pane]');
+                const conversationLoader = document.querySelector('[data-chat-conversation-loader]');
                 const conversationDropzoneHint = document.querySelector('[data-chat-conversation-dropzone-hint]');
                 const chatError = document.querySelector('[data-chat-error]');
                 const emojiButton = document.querySelector('[data-chat-emoji-button]');
@@ -1149,6 +1159,9 @@
                 let pollUrl = wrapper?.dataset.pollUrl;
                 const summaryRoot = document.querySelector('[data-chat-summary-url]');
                 const sidebarList = document.querySelector('[data-chat-conversations-list]');
+                const sidebarScroll = document.querySelector('[data-chat-sidebar-scroll]');
+                const conversationsLoader = document.querySelector('[data-chat-conversations-loader]');
+                const conversationsMore = document.querySelector('[data-chat-conversations-more]');
                 const sidebarFavoritesList = document.querySelector('[data-chat-favorites-list]');
                 const sidebarGroupsList = document.querySelector('[data-chat-groups-list]');
                 const sidebarUnreadTotal = document.querySelector('[data-chat-unread-total]');
@@ -1224,6 +1237,11 @@
                 let hasMoreOlderMessages = Boolean(@js((bool) ($selectedConversation?->messages_has_more_older ?? false)));
                 let attachmentSnapshot = [];
                 let sidebarTab = 'chats';
+                let sidebarConversations = null;
+                let nextConversationsCursor = root?.dataset.chatNextConversationCursor || null;
+                let loadingMoreConversations = false;
+                let loadedOlderConversations = false;
+                let sidebarRefreshPending = false;
                 let searchAbortController = null;
                 let searchDebounce = null;
                 let latestMessageId = Number(messagesContainer?.querySelector('[data-message-id]')?.dataset.messageId ?? 0);
@@ -1235,6 +1253,31 @@
                 let editingMessageDraft = '';
                 let pendingDeleteMessageId = null;
                 let conversationRevision = 0;
+                let conversationLoading = false;
+                const conversationDrafts = new Map();
+                let conversationAbortController = null;
+                const isCurrentConversationRequest = (revision, conversationId) =>
+                    revision === conversationRevision && !conversationLoading && Number(wrapper?.dataset.conversationId || 0) === Number(conversationId);
+                const beginConversationChange = () => {
+                    conversationRevision += 1;
+                    conversationAbortController?.abort();
+                    conversationAbortController = new AbortController();
+                    conversationLoading = true;
+                    conversationLoader?.classList.remove('hidden');
+                    conversationLoader?.classList.add('flex');
+                    conversationPane?.setAttribute('aria-busy', 'true');
+                    input?.blur();
+                    [conversationPane?.querySelector('header'), wrapper, form].forEach((element) => element?.setAttribute('inert', ''));
+                    return conversationRevision;
+                };
+                const finishConversationChange = (revision) => {
+                    if (revision !== conversationRevision) return;
+                    conversationLoading = false;
+                    conversationLoader?.classList.add('hidden');
+                    conversationLoader?.classList.remove('flex');
+                    conversationPane?.removeAttribute('aria-busy');
+                    [conversationPane?.querySelector('header'), wrapper, form].forEach((element) => element?.removeAttribute('inert'));
+                };
                 let currentGroupModalData = window.chatInitialGroupModalData || null;
                 let composerMentionState = {
                     isOpen: false,
@@ -2641,7 +2684,7 @@
                 };
 
                 const loadOlderMessages = async () => {
-                    if (!wrapper || !hasComposer || !hasMoreOlderMessages || isLoadingOlderMessages) {
+                    if (!wrapper || !hasComposer || conversationLoading || !hasMoreOlderMessages || isLoadingOlderMessages) {
                         return;
                     }
 
@@ -2678,6 +2721,7 @@
                         }
 
                         const payload = await response.json();
+                        if (!isCurrentConversationRequest(requestRevision, conversationId)) return;
                         const olderMessages = Array.isArray(payload.messages) ? payload.messages : [];
 
                         if (olderMessages.length === 0) {
@@ -2744,6 +2788,7 @@
 
                 const saveInlineEdit = async () => {
                     const conversationId = Number(wrapper.dataset.conversationId || sidebarSelectedConversationId || 0);
+                    const requestRevision = conversationRevision;
                     const message = currentMessages.find((item) => Number(item.id) === Number(editingMessageId));
 
                     if (!conversationId || !message) {
@@ -2786,6 +2831,7 @@
                         });
 
                         const payload = await response.json().catch(() => ({}));
+                        if (!isCurrentConversationRequest(requestRevision, conversationId)) return;
 
                         if (!response.ok) {
                             showChatError(payload?.message || 'No se pudo editar el mensaje.');
@@ -2815,7 +2861,7 @@
                         await refreshSidebar();
                     } catch (error) {
                         console.error(error);
-                        showChatError('No se pudo editar el mensaje.');
+                        if (isCurrentConversationRequest(requestRevision, conversationId)) showChatError('No se pudo editar el mensaje.');
                     }
                 };
 
@@ -2887,6 +2933,7 @@
 
                 const deleteActiveMessage = async () => {
                     const conversationId = Number(wrapper.dataset.conversationId || sidebarSelectedConversationId || 0);
+                    const requestRevision = conversationRevision;
                     const message = currentMessages.find((item) => Number(item.id) === Number(pendingDeleteMessageId));
 
                     if (!conversationId || !message) {
@@ -2914,6 +2961,7 @@
                             });
 
                         const payload = await response.json().catch(() => ({}));
+                        if (!isCurrentConversationRequest(requestRevision, conversationId)) return;
 
                         if (!response.ok) {
                             showChatError(payload?.message || 'No se pudo eliminar el mensaje.');
@@ -2940,7 +2988,7 @@
                         await refreshSidebar();
                     } catch (error) {
                         console.error(error);
-                        showChatError('No se pudo eliminar el mensaje.');
+                        if (isCurrentConversationRequest(requestRevision, conversationId)) showChatError('No se pudo eliminar el mensaje.');
                     }
                 };
 
@@ -3230,17 +3278,17 @@
                     });
                 }
 
-                const loadConversation = async (conversationId, { pushState = true, preserveHistory = false } = {}) => {
+                const loadConversation = async (conversationId, { pushState = true, preserveHistory = false, revision = null } = {}) => {
                     if (!conversationId) {
                         return;
                     }
 
-                    conversationRevision += 1;
-                    const requestRevision = conversationRevision;
+                    const requestRevision = revision ?? beginConversationChange();
                     const url = buildConversationMessagesUrl(conversationId);
 
                     try {
                         const response = await fetch(url, {
+                            signal: conversationAbortController.signal,
                             headers: {
                                 ...getRealtimeHeaders(),
                                 'X-Requested-With': 'XMLHttpRequest',
@@ -3249,7 +3297,7 @@
                         });
 
                         if (!response.ok) {
-                            return;
+                            throw new Error('No se pudo cargar la conversación.');
                         }
 
                         if (requestRevision !== conversationRevision) {
@@ -3257,17 +3305,41 @@
                         }
 
                         const payload = await response.json();
+                        if (requestRevision !== conversationRevision) return;
                         const messages = Array.isArray(payload.messages) ? payload.messages : [];
                         const activeConversationId = Number(payload.conversation_id || conversationId);
+                        if (activeConversationId !== Number(conversationId)) {
+                            throw new Error('La conversación recibida no coincide con la solicitada.');
+                        }
                         const shouldMergeHistory = preserveHistory && Number(wrapper?.dataset.conversationId || 0) === activeConversationId;
                         const preserveScroll = shouldMergeHistory && (wrapper.scrollTop < (wrapper.scrollHeight - wrapper.clientHeight - 120))
                             ? 'exact'
                             : 'none';
 
+                        const previousConversationId = Number(wrapper.dataset.conversationId || 0);
+                        if (previousConversationId !== activeConversationId) {
+                            conversationDrafts.set(previousConversationId, {
+                                body: input.value,
+                                attachments: [...attachmentSnapshot],
+                                mentionIds: [...composerMentionIds],
+                            });
+                            const draft = conversationDrafts.get(activeConversationId);
+                            input.value = draft?.body || '';
+                            attachmentSnapshot = draft?.attachments || [];
+                            composerMentionIds = draft?.mentionIds || [];
+                            syncAttachmentInputFiles();
+                            renderAttachmentsPreview();
+                        }
+
                         sidebarSelectedConversationId = activeConversationId;
                         pollUrl = buildConversationMessagesUrl(activeConversationId);
                         wrapper.dataset.pollUrl = pollUrl;
                         wrapper.dataset.conversationId = String(activeConversationId);
+                        if (sidebarConversations) {
+                            const selectedItem = sidebarConversations.find((conversation) => Number(conversation.id) === activeConversationId);
+                            if (selectedItem) selectedItem.unread_messages_count = 0;
+                            renderPrivateConversations();
+                        }
                         currentConversationIsGroup = Boolean(payload.conversation_is_group);
                         hasMoreOlderMessages = Boolean(payload.has_more_older);
                         isLoadingOlderMessages = false;
@@ -3280,7 +3352,6 @@
                         activeMessageMenuId = null;
                         editingMessageId = null;
                         editingMessageDraft = '';
-                        composerMentionIds = [];
                         clearComposerMentions();
 
                         updateHeader(payload);
@@ -3301,34 +3372,51 @@
 
                 window.chatActiveConversationId = activeConversationId;
             } catch (error) {
-                console.error(error);
+                if (error?.name !== 'AbortError' && requestRevision === conversationRevision) {
+                    console.error(error);
+                    showChatError('No se pudo cargar la conversación. Inténtalo de nuevo.');
+                }
+            } finally {
+                finishConversationChange(requestRevision);
             }
         };
 
                 const openConversationFromLink = async (url) => {
+                    const requestRevision = beginConversationChange();
                     try {
                         const nextUrl = new URL(url, window.location.href);
 
                         if (nextUrl.searchParams.has('conversation')) {
-                            await loadConversation(nextUrl.searchParams.get('conversation'), { pushState: true });
+                            await loadConversation(nextUrl.searchParams.get('conversation'), { pushState: true, revision: requestRevision });
                             return;
                         }
 
                         const response = await fetch(nextUrl.toString(), {
+                            signal: conversationAbortController.signal,
                             headers: {
                                 'X-Requested-With': 'XMLHttpRequest',
                                 Accept: 'application/json',
                             },
                         });
 
+                        if (!response.ok) throw new Error('No se pudo abrir la conversación.');
+                        if (requestRevision !== conversationRevision) return;
+
                         const redirectedUrl = new URL(response.url, window.location.href);
                         const conversationId = redirectedUrl.searchParams.get('conversation');
 
                         if (conversationId) {
-                            await loadConversation(conversationId, { pushState: true });
+                            await loadConversation(conversationId, { pushState: true, revision: requestRevision });
+                        } else {
+                            throw new Error('No se pudo abrir la conversación.');
                         }
                     } catch (error) {
-                        console.error(error);
+                        if (error?.name !== 'AbortError' && requestRevision === conversationRevision) {
+                            console.error(error);
+                            showChatError('No se pudo cargar la conversación. Inténtalo de nuevo.');
+                        }
+                    } finally {
+                        finishConversationChange(requestRevision);
                     }
                 };
 
@@ -3359,10 +3447,61 @@
                     attachmentsChips.classList.remove('hidden');
                 };
 
+                const renderPrivateConversations = () => {
+                    if (!sidebarList || !sidebarConversations) return;
+                    sidebarList.innerHTML = sidebarConversations.length
+                        ? sidebarConversations.map(renderConversation).join('')
+                        : '<div class="px-4 py-8 text-center text-sm text-slate-500">Sin conversaciones aún</div>';
+                    conversationsMore?.classList.toggle('hidden', !nextConversationsCursor || loadingMoreConversations);
+                };
+
+                const loadMoreConversations = async () => {
+                    if (!sidebarConversations) {
+                        await refreshSidebar();
+                    }
+                    if (!sidebarConversations || !nextConversationsCursor || loadingMoreConversations || sidebarTab !== 'chats') return;
+                    loadingMoreConversations = true;
+                    conversationsLoader?.classList.remove('hidden');
+                    conversationsMore?.classList.add('hidden');
+                    try {
+                        const url = new URL(summaryUrl, window.location.origin);
+                        url.searchParams.set('cursor', nextConversationsCursor);
+                        const response = await fetch(url, { headers: { ...getRealtimeHeaders(), 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } });
+                        if (!response.ok) throw new Error('No se pudieron cargar más conversaciones.');
+                        const payload = await response.json();
+                        const known = new Set(sidebarConversations.map((conversation) => Number(conversation.id)));
+                        for (const conversation of (Array.isArray(payload.conversations) ? payload.conversations : [])) {
+                            if (!known.has(Number(conversation.id))) {
+                                sidebarConversations.push(conversation);
+                                known.add(Number(conversation.id));
+                            }
+                        }
+                        nextConversationsCursor = payload.next_cursor || null;
+                        loadedOlderConversations = true;
+                        if (conversationsMore) conversationsMore.textContent = 'Mostrar más conversaciones';
+                    } catch (error) {
+                        console.error(error);
+                        if (conversationsMore) conversationsMore.textContent = 'No se pudieron cargar. Pulsa para reintentar';
+                    } finally {
+                        loadingMoreConversations = false;
+                        conversationsLoader?.classList.add('hidden');
+                        renderPrivateConversations();
+                    }
+                };
+                conversationsMore?.addEventListener('click', () => void loadMoreConversations());
+                sidebarScroll?.addEventListener('scroll', () => {
+                    if (sidebarScroll.scrollHeight - sidebarScroll.scrollTop - sidebarScroll.clientHeight < 160) {
+                        void loadMoreConversations();
+                    }
+                });
+
                 const refreshSidebar = async () => {
                     if (!summaryUrl || (!sidebarList && !sidebarFavoritesList && !sidebarGroupsList)) {
                         return;
                     }
+
+                    if (sidebarRefreshPending) return;
+                    sidebarRefreshPending = true;
 
                     try {
                         const response = await fetch(summaryUrl, {
@@ -3383,8 +3522,7 @@
                         const favoriteContacts = Array.isArray(payload.favorite_contacts) ? payload.favorite_contacts : [];
                         const chatGroups = Array.isArray(payload.chat_groups) ? payload.chat_groups : [];
                         const unreadTotal = Number(payload.unread_messages_total || 0);
-                        const chatsUnreadTotal = privateConversations
-                            .reduce((total, conversation) => total + Number(conversation.unread_messages_count || 0), 0);
+                        const chatsUnreadTotal = unreadTotal;
                         const groupsUnreadTotal = chatGroups
                             .reduce((total, conversation) => total + Number(conversation.unread_messages_count || 0), 0);
 
@@ -3400,15 +3538,15 @@
                             syncTabBadge(tabBadges.groups, groupsUnreadTotal);
                         }
 
-                        if (sidebarList) {
-                            sidebarList.innerHTML = privateConversations.length === 0
-                                ? `
-                                    <div class="px-4 py-8 text-center text-sm text-slate-500">
-                                        Sin conversaciones aún
-                                    </div>
-                                `
-                                : privateConversations.map(renderConversation).join('');
-                        }
+                        const firstPageIds = new Set(privateConversations.map((conversation) => Number(conversation.id)));
+                        sidebarConversations = [
+                            ...privateConversations,
+                            ...(loadedOlderConversations || loadingMoreConversations
+                                ? (sidebarConversations || []).filter((conversation) => !firstPageIds.has(Number(conversation.id)))
+                                : []),
+                        ];
+                        if (!loadedOlderConversations && !loadingMoreConversations) nextConversationsCursor = payload.next_cursor || null;
+                        renderPrivateConversations();
 
                         if (sidebarFavoritesList) {
                             sidebarFavoritesList.innerHTML = favoriteContacts.length === 0
@@ -3437,19 +3575,22 @@
                         }
                     } catch (error) {
                         console.error(error);
+                    } finally {
+                        sidebarRefreshPending = false;
                     }
                 };
 
                 const syncMessages = async () => {
-                    if (!pollUrl || pollingLocked) {
+                    if (!pollUrl || pollingLocked || conversationLoading) {
                         return;
                     }
 
                     try {
                         const requestRevision = conversationRevision;
+                        const conversationId = Number(wrapper?.dataset.conversationId || 0);
                         const latestId = getLatestMessageId();
                         const syncFromId = getHistorySyncCursorMessageId();
-                        const response = await fetch(buildConversationMessagesUrl(sidebarSelectedConversationId || Number(wrapper?.dataset.conversationId || 0), {
+                        const response = await fetch(buildConversationMessagesUrl(conversationId, {
                             after_message_id: syncFromId,
                             limit: Math.min(Math.max(historyPageSize, historySyncOverlap + 10), 100),
                         }), {
@@ -3469,6 +3610,7 @@
                         }
 
                         const payload = await response.json();
+                        if (!isCurrentConversationRequest(requestRevision, conversationId)) return;
                         const messages = Array.isArray(payload.messages) ? payload.messages : [];
                         const nextMessages = mergeMessagesById(currentMessages, messages);
                         const nextLatest = Number(nextMessages[nextMessages.length - 1]?.id ?? 0);
@@ -3821,7 +3963,7 @@
                 };
 
                 const sendMessage = async () => {
-                    if (composerDisabled) {
+                    if (composerDisabled || conversationLoading) {
                         return;
                     }
 
@@ -3858,6 +4000,19 @@
                     const draftMentionIds = [...composerMentionIds];
                     const requestRevision = conversationRevision;
                     const pendingMessageId = pendingMessage.id;
+                    const restoreFailedDraft = () => {
+                        if (Number(wrapper.dataset.conversationId || 0) === conversationId) {
+                            if (input.value === '' && attachmentSnapshot.length === 0 && composerMentionIds.length === 0) {
+                                input.value = draftBody;
+                                attachmentSnapshot = draftAttachments;
+                                composerMentionIds = draftMentionIds;
+                                syncAttachmentInputFiles();
+                                renderAttachmentsPreview();
+                            }
+                        } else if (!conversationDrafts.has(conversationId) || (!conversationDrafts.get(conversationId).body && !conversationDrafts.get(conversationId).attachments.length)) {
+                            conversationDrafts.set(conversationId, { body: draftBody, attachments: draftAttachments, mentionIds: draftMentionIds });
+                        }
+                    };
                     const url = buildConversationStoreUrl(conversationId);
                     const formData = new FormData();
                     formData.append('_token', csrfToken);
@@ -3899,20 +4054,15 @@
                         const payload = await response.json().catch(() => ({}));
 
                         if (!response.ok) {
-                            if (requestRevision === conversationRevision) {
+                            if (Number(wrapper.dataset.conversationId || 0) === conversationId) {
                                 applyMessagesPayload(currentMessages.filter((message) => String(message.id) !== String(pendingMessageId)), {
                                     preserveScroll: 'none',
                                     replace: true,
                                 });
                             }
 
-                            if (input.value === '' && attachmentSnapshot.length === 0 && composerMentionIds.length === 0) {
-                                input.value = draftBody;
-                                attachmentSnapshot = draftAttachments;
-                                composerMentionIds = draftMentionIds;
-                                syncAttachmentInputFiles();
-                                renderAttachmentsPreview();
-                            }
+                            restoreFailedDraft();
+                            if (Number(wrapper.dataset.conversationId || 0) !== conversationId) return;
 
                             if (response.status === 413) {
                                 showChatError('El conjunto de archivos adjuntos supera el peso máximo permitido de 30 MB.');
@@ -3925,6 +4075,11 @@
                             } else {
                                 showChatError(payload?.message || 'No se pudo enviar el mensaje.');
                             }
+                            return;
+                        }
+
+                        if (Number(wrapper.dataset.conversationId || 0) !== conversationId) {
+                            void refreshSidebar();
                             return;
                         }
 
@@ -3954,23 +4109,17 @@
                         await refreshSidebar();
                     } catch (error) {
                         console.error(error);
-                        if (requestRevision === conversationRevision) {
+                        if (Number(wrapper.dataset.conversationId || 0) === conversationId) {
                             applyMessagesPayload(currentMessages.filter((message) => String(message.id) !== String(pendingMessageId)), {
                                 preserveScroll: 'none',
                                 replace: true,
                             });
                         }
-                        if (input.value === '' && attachmentSnapshot.length === 0 && composerMentionIds.length === 0) {
-                            input.value = draftBody;
-                            attachmentSnapshot = draftAttachments;
-                            composerMentionIds = draftMentionIds;
-                            syncAttachmentInputFiles();
-                            renderAttachmentsPreview();
-                        }
-                        showChatError('No se pudo enviar el mensaje.');
+                        restoreFailedDraft();
+                        if (Number(wrapper.dataset.conversationId || 0) === conversationId) showChatError('No se pudo enviar el mensaje.');
                     } finally {
                         window.requestAnimationFrame(() => {
-                            focusComposer();
+                            if (isCurrentConversationRequest(requestRevision, conversationId)) focusComposer();
                         });
                     }
                 };

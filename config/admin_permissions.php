@@ -119,6 +119,14 @@ return [
             'scope' => 'application',
             'default_roles' => [],
         ],
+        'tools.manage' => [
+            'label' => 'Gestionar altas y bajas de herramientas',
+            'description' => 'Permite acceder al módulo de altas y bajas de herramientas de Informática.',
+            'route' => 'tools.altas-bajas',
+            'icon' => 'ticket-tools',
+            'scope' => 'application',
+            'default_roles' => [],
+        ],
         'backoffice.tickets-it-recipients.manage' => [
             'label' => 'Gestionar destinatarios de avisos de Tickets IT',
             'description' => 'Permite acceder al backoffice y gestionar los destinatarios de los avisos enviados al crear nuevos tickets IT.',

@@ -587,6 +587,7 @@ class AdminPermissionsPage extends Page
             'contacts' => 'Contactos',
             'ticket-tools' => 'Tipos de incidencia',
             'tickets-it' => 'Tickets IT',
+            'tools' => 'Altas y bajas',
             'magazine' => 'Revista',
             'bulletin' => 'Tablón',
             'notifications' => 'Notificaciones',
