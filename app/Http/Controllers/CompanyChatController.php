@@ -34,6 +34,7 @@ class CompanyChatController extends Controller
     private const MAX_ATTACHMENT_FILE_KILOBYTES = 30720;
     private const CHAT_MESSAGES_PAGE_SIZE = 24;
     private const CHAT_MESSAGES_SYNC_OVERLAP = 16;
+    private const CHAT_CONVERSATIONS_PAGE_SIZE = 10;
 
     public function index(Request $request): View|RedirectResponse|JsonResponse
     {
@@ -44,36 +45,6 @@ class CompanyChatController extends Controller
         $policyVersion = ChatPolicy::version();
         $policyAccepted = $this->hasAcceptedChatPolicy($authUser);
         $favoriteUserIds = $this->favoriteUserIdsFor($authUser);
-        $chatGroups = $authUser->chatGroups()
-            ->withCount('participants')
-            ->with(['participants' => function ($query): void {
-                $query->orderBy('name');
-            }, 'conversation' => function ($query): void {
-                $query->with(['messages' => function ($messageQuery): void {
-                    $messageQuery->with('reads');
-                }]);
-            }])
-            ->get();
-        $chatGroups = $this->sortChatGroupsForSidebar($chatGroups);
-
-        $conversations = CompanyChatConversation::query()
-            ->forUser($authUser)
-            ->whereNull('company_chat_group_id')
-            ->with(['userOne', 'userTwo'])
-            ->orderByDesc('last_message_at')
-            ->orderByDesc('created_at')
-            ->get();
-
-        $conversations->each(function (CompanyChatConversation $conversation) use ($authUser): void {
-            $conversation->setAttribute('unread_messages_count', $this->conversationUnreadMessagesCount($conversation, $authUser));
-        });
-
-        $chatGroups->each(function (CompanyChatGroup $chatGroup) use ($authUser): void {
-            $chatGroup->setAttribute('avatar_url', $this->groupAvatarUrl($chatGroup));
-            $chatGroup->setRelation('conversation', $chatGroup->conversation);
-            $chatGroup->conversation?->setAttribute('unread_messages_count', $this->conversationUnreadMessagesCount($chatGroup->conversation, $authUser));
-        });
-
         if ($request->boolean('ajax')) {
             abort_unless($policyAccepted, 403);
 
@@ -149,19 +120,14 @@ class CompanyChatController extends Controller
             ]);
         }
 
-        $conversations = CompanyChatConversation::query()
-            ->forUser($authUser)
-            ->whereNull('company_chat_group_id')
-            ->with(['userOne', 'userTwo'])
-            ->withCount([
-                'messages as unread_messages_count' => function ($query) use ($authUser): void {
-                    $query->whereNull('read_at')
-                        ->where('sender_id', '!=', $authUser->id);
-                },
-            ])
-            ->orderByDesc('last_message_at')
-            ->orderByDesc('created_at')
-            ->get();
+        [$conversations, $nextConversationCursor] = $this->privateConversationPage($authUser);
+        $chatGroups = $authUser->chatGroups()->withCount('participants')
+            ->with(['participants' => fn ($query) => $query->orderBy('name'), 'conversation'])->get();
+        $chatGroups = $this->sortChatGroupsForSidebar($chatGroups);
+        $chatGroups->each(function (CompanyChatGroup $chatGroup) use ($authUser): void {
+            $chatGroup->setAttribute('avatar_url', $this->groupAvatarUrl($chatGroup));
+            $chatGroup->conversation?->setAttribute('unread_messages_count', $this->conversationUnreadMessagesCount($chatGroup->conversation, $authUser));
+        });
 
         $selectedConversation = null;
         $conversationId = $request->integer('conversation');
@@ -267,6 +233,8 @@ class CompanyChatController extends Controller
 
         return view('tools.chat-beta', [
             'conversations' => $privateConversations,
+            'nextConversationCursor' => $nextConversationCursor,
+            'chatUnreadTotal' => $this->privateUnreadMessagesCount($authUser),
             'selectedConversation' => $selectedConversation,
             'people' => $people,
             'favoriteContacts' => $favoriteContacts,
@@ -748,34 +716,25 @@ class CompanyChatController extends Controller
         $authUser = $request->user();
         $favoriteUserIds = $this->favoriteUserIdsFor($authUser);
 
-        $privateConversations = CompanyChatConversation::query()
-            ->forUser($authUser)
-            ->whereNull('company_chat_group_id')
-            ->with(['userOne', 'userTwo'])
-            ->orderByDesc('last_message_at')
-            ->orderByDesc('created_at')
-            ->get()
+        [$conversationPage, $nextCursor] = $this->privateConversationPage($authUser, $request->query('cursor'));
+        $privateConversations = $conversationPage
             ->map(function (CompanyChatConversation $conversation) use ($authUser, $favoriteUserIds): array {
-                $unreadMessagesCount = $this->conversationUnreadMessagesCount($conversation, $authUser);
-
                 return [
                     'id' => $conversation->id,
                     ...$this->conversationPayload($conversation, $authUser, $favoriteUserIds),
                     'last_message_excerpt' => $conversation->last_message_excerpt,
                     'last_message_at_label' => $conversation->last_message_at?->translatedFormat('d/m H:i'),
-                    'unread_messages_count' => $unreadMessagesCount,
+                    'unread_messages_count' => (int) $conversation->unread_messages_count,
                 ];
             });
 
+        if ($request->filled('cursor')) {
+            return response()->json(['conversations' => $privateConversations, 'next_cursor' => $nextCursor]);
+        }
+
         $chatGroups = $authUser->chatGroups()
             ->withCount('participants')
-            ->with(['participants' => function ($query): void {
-                $query->orderBy('name');
-            }, 'conversation' => function ($query): void {
-                $query->with(['messages' => function ($messageQuery): void {
-                    $messageQuery->with('reads');
-                }]);
-            }])
+            ->with(['participants' => fn ($query) => $query->orderBy('name'), 'conversation'])
             ->get();
         $chatGroups = $this->sortChatGroupsForSidebar($chatGroups);
 
@@ -809,11 +768,64 @@ class CompanyChatController extends Controller
         $favoriteContacts = $this->favoriteContactsPayload($authUser);
 
         return response()->json([
-            'unread_messages_total' => $privateConversations->sum('unread_messages_count'),
+            'unread_messages_total' => $this->privateUnreadMessagesCount($authUser),
             'conversations' => $privateConversations,
+            'next_cursor' => $nextCursor,
             'chat_groups' => $chatGroupsPayload,
             'favorite_contacts' => $favoriteContacts,
         ]);
+    }
+
+    private function privateConversationPage(User $user, mixed $cursor = null): array
+    {
+        $query = CompanyChatConversation::query()->forUser($user)->whereNull('company_chat_group_id')
+            ->with(['userOne', 'userTwo'])
+            ->withCount(['messages as unread_messages_count' => fn ($messages) => $messages->whereNull('read_at')->where('sender_id', '!=', $user->id)])
+            ->orderByRaw('CASE WHEN last_message_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('last_message_at')->orderByDesc('created_at')->orderByDesc('id');
+
+        if ($cursor !== null) {
+            $decoded = is_string($cursor) ? base64_decode($cursor, true) : false;
+            $position = $decoded !== false ? json_decode($decoded, true) : null;
+            if (! is_array($position) || ! array_key_exists('last', $position) || ! isset($position['created'], $position['id'])
+                || ! is_int($position['id']) || $position['id'] < 1 || ! is_string($position['created'])
+                || ($position['last'] !== null && ! is_string($position['last']))) {
+                throw ValidationException::withMessages(['cursor' => 'El cursor de conversaciones no es válido.']);
+            }
+
+            $query->where(function ($outer) use ($position): void {
+                $olderCreated = function ($sameDate) use ($position): void {
+                    $sameDate->where('created_at', '<', $position['created'])
+                        ->orWhere(fn ($tie) => $tie->where('created_at', $position['created'])->where('id', '<', $position['id']));
+                };
+                if ($position['last'] === null) {
+                    $outer->whereNull('last_message_at')->where($olderCreated);
+                } else {
+                    $outer->whereNull('last_message_at')
+                        ->orWhere('last_message_at', '<', $position['last'])
+                        ->orWhere(fn ($sameLast) => $sameLast->where('last_message_at', $position['last'])->where($olderCreated));
+                }
+            });
+        }
+
+        $conversations = $query->limit(self::CHAT_CONVERSATIONS_PAGE_SIZE + 1)->get();
+        $hasMore = $conversations->count() > self::CHAT_CONVERSATIONS_PAGE_SIZE;
+        $conversations = $conversations->take(self::CHAT_CONVERSATIONS_PAGE_SIZE)->values();
+        $last = $conversations->last();
+        $nextCursor = $hasMore && $last ? base64_encode(json_encode([
+            'last' => $last->getRawOriginal('last_message_at'),
+            'created' => $last->getRawOriginal('created_at'),
+            'id' => (int) $last->id,
+        ])) : null;
+
+        return [$conversations, $nextCursor];
+    }
+
+    private function privateUnreadMessagesCount(User $user): int
+    {
+        return CompanyChatMessage::query()->whereNull('read_at')->where('sender_id', '!=', $user->id)
+            ->whereHas('conversation', fn ($query) => $query->forUser($user)->whereNull('company_chat_group_id'))
+            ->count();
     }
 
     public function toggleFavorite(Request $request, User $user): JsonResponse|RedirectResponse

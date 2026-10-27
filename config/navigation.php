@@ -24,8 +24,17 @@ return [
             'route' => 'curriculums.index',
         ],
         [
-            'label' => 'Tickets',
-            'route' => 'tickets.index',
+            'label' => 'Informática',
+            'children' => [
+                [
+                    'label' => 'Tickets',
+                    'route' => 'tickets.index',
+                ],
+                [
+                    'label' => 'Altas y bajas',
+                    'route' => 'tools.altas-bajas',
+                ],
+            ],
         ],
         [
             'label' => 'Empresa',

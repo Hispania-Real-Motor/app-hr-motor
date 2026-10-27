@@ -1115,6 +1115,54 @@ class CompanyChatTest extends TestCase
         $this->assertSame(0, $recipient->unreadNotifications()->count());
     }
 
+    public function test_private_conversations_are_paged_and_unread_count_includes_later_pages(): void
+    {
+        $user = User::factory()->create();
+        $this->acceptChatPolicy($user);
+        $ids = [];
+        foreach (range(1, 32) as $index) {
+            $other = User::factory()->create();
+            $conversation = CompanyChatConversation::createBetweenUsers($user, $other);
+            $conversation->forceFill(['last_message_at' => $index <= 29 ? now()->startOfDay() : null])->save();
+            $ids[] = $conversation->id;
+            if ($index === 1) {
+                CompanyChatMessage::query()->create([
+                    'company_chat_conversation_id' => $conversation->id,
+                    'sender_id' => $other->id,
+                    'body' => 'Mensaje en una conversación antigua',
+                ]);
+            }
+        }
+
+        $outsiders = User::factory()->count(2)->create();
+        $otherConversation = CompanyChatConversation::createBetweenUsers($outsiders[0], $outsiders[1]);
+        $first = $this->actingAs($user)->getJson(route('chat.beta.summary'))->assertOk()
+            ->assertJsonCount(10, 'conversations')->assertJsonPath('unread_messages_total', 1);
+        $firstIds = collect($first->json('conversations'))->pluck('id')->all();
+        $cursor = $first->json('next_cursor');
+        $this->assertNotEmpty($cursor);
+        $this->assertNotContains($ids[0], $firstIds);
+        $this->assertNotContains($otherConversation->id, $firstIds);
+
+        $remainingIds = [];
+        $pageSizes = [];
+        while ($cursor !== null) {
+            $page = $this->getJson(route('chat.beta.summary', ['cursor' => $cursor]))->assertOk();
+            $pageIds = collect($page->json('conversations'))->pluck('id')->all();
+            $pageSizes[] = count($pageIds);
+            array_push($remainingIds, ...$pageIds);
+            $cursor = $page->json('next_cursor');
+        }
+        $this->assertSame([10, 10, 2], $pageSizes);
+        $this->assertCount(32, array_unique([...$firstIds, ...$remainingIds]));
+        $this->assertContains($ids[0], $remainingIds);
+        $this->assertNotContains($otherConversation->id, $remainingIds);
+
+        $this->get(route('chat.beta', ['conversation' => $ids[0]]))->assertOk()
+            ->assertSee('Mensaje en una conversación antigua');
+        $this->getJson(route('chat.beta.summary', ['cursor' => 'invalido']))->assertUnprocessable();
+    }
+
     public function test_chat_summary_returns_conversation_metadata_and_unread_counts(): void
     {
         $sender = User::factory()->create([
