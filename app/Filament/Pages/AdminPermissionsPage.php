@@ -553,6 +553,12 @@ class AdminPermissionsPage extends Page
                     $module = 'Reseñas';
                 } elseif ($key === 'curricula.view') {
                     $module = 'Analizador de currículums';
+                } elseif (Str::startsWith($key, 'motorflash-message-errors.')) {
+                    $module = 'Errores IT';
+                } elseif (Str::startsWith($key, 'enreach-errors.')) {
+                    $module = 'Errores IT';
+                } elseif ($key === 'dashboard.summary.view') {
+                    $module = 'Escritorio';
                 } else {
                     $module = $this->moduleLabel(Str::before($key, '.'));
                 }
@@ -595,6 +601,8 @@ class AdminPermissionsPage extends Page
             'chat-retention-holds' => 'Conversaciones',
             'conversation-access' => 'Conversaciones',
             'chat-groups' => 'Conversaciones',
+            'motorflash-message-errors' => 'Errores IT',
+            'dashboard' => 'Escritorio',
         ][$module] ?? Str::headline($module);
     }
 
