@@ -18,6 +18,8 @@ class AdminOverviewWidget extends BaseWidget
 
     protected static ?int $sort = -2;
 
+    protected ?string $heading = 'Resumen general';
+
     protected int | string | array $columnSpan = 'full';
 
     protected int | array | null $columns = [
@@ -27,6 +29,11 @@ class AdminOverviewWidget extends BaseWidget
     ];
 
     protected ?string $pollingInterval = null;
+
+    public static function canView(): bool
+    {
+        return app_user_has_admin_permission(auth()->user(), 'dashboard.summary.view');
+    }
 
     protected function getStats(): array
     {
@@ -62,7 +69,9 @@ class AdminOverviewWidget extends BaseWidget
     private function safeCount(string $metric, Closure $query): int | string
     {
         try {
-            return $query();
+            $value = $query();
+
+            return is_int($value) && $value >= 0 ? $value : 'N/D';
         } catch (Throwable $exception) {
             report($exception);
             Log::error('No se pudo cargar una métrica del dashboard de Filament.', [
@@ -70,7 +79,7 @@ class AdminOverviewWidget extends BaseWidget
                 'exception' => $exception,
             ]);
 
-            return '—';
+            return 'N/D';
         }
     }
 }

@@ -2,6 +2,9 @@
     $value = $getValue();
     $url = $getUrl();
     $tag = $url ? 'a' : 'div';
+    $color = $getColor();
+    $accentStyle = $color ? "border-left: 3px solid {$color};" : null;
+    $description = $getDescription();
 @endphp
 
 <{!! $tag !!}
@@ -13,22 +16,24 @@
             ->class([
                 'fi-wi-stats-overview-stat',
             ])
+            ->style($accentStyle)
     }}
 >
     <div class="fi-wi-stats-overview-stat-content">
         <div class="fi-wi-stats-overview-stat-label-ctn">
-            {{ \Filament\Support\generate_icon_html($getIcon()) }}
+            {{ \Filament\Support\generate_icon_html($getIcon(), attributes: (new \Filament\Support\View\ComponentAttributeBag)->style($color ? "color: {$color};" : null)) }}
 
             <span class="fi-wi-stats-overview-stat-label">
                 {{ $getLabel() }}
             </span>
         </div>
 
-        <div
-            class="fi-wi-stats-overview-stat-value"
-            style="font-size: 2.5rem;"
-            data-count-up-value="{{ $value }}"
-            x-data="{
+        @if (filled($value))
+            <div
+                class="fi-wi-stats-overview-stat-value"
+                style="font-size: 2.5rem;"
+                data-count-up-value="{{ $value }}"
+                x-data="{
                 init() {
                     const element = $el;
                     const finalText = element.dataset.countUpValue ?? element.textContent.trim();
@@ -105,10 +110,17 @@
                         showFinalValue();
                     }
                 },
-            }"
-            x-init="init()"
-        >
-            {{ $value }}
-        </div>
+                }"
+                x-init="init()"
+            >
+                {{ $value }}
+            </div>
+        @endif
+
+        @if (filled($description))
+            <div class="fi-wi-stats-overview-stat-description mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ $description }}
+            </div>
+        @endif
     </div>
 </{!! $tag !!}>
