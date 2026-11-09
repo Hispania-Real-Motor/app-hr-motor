@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
             'admin.access' => \App\Http\Middleware\CheckAdminAccess::class,
             'internal.basic_auth' => \App\Http\Middleware\InternalBasicAuthMiddleware::class,
+            'enreach.events.secret' => \App\Http\Middleware\EnreachEventsSecretMiddleware::class,
         ]);
 
         $middleware->appendToGroup('web', [

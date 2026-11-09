@@ -4,7 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Filament\Pages\MotorflashMessageErrorsPage;
 use App\Filament\Pages\EnreachErrorsPage;
-use App\Models\EnreachError;
+use App\Models\EnreachErrorEvent;
 use App\Models\MotorflashMessageError;
 use Closure;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -57,7 +57,11 @@ class MotorflashMessageErrorsOverviewWidget extends BaseWidget
                 color: '#8203F7',
                 url: EnreachErrorsPage::getUrl(),
                 metric: 'enreach_errors',
-                query: fn (): int => EnreachError::query()->where('status', 'open')->count(),
+                query: fn (): int => EnreachErrorEvent::query()
+                    ->where('error_type', EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND)
+                    ->whereNotNull('phone_normalized')
+                    ->distinct()
+                    ->count('phone_normalized'),
             );
         }
 
