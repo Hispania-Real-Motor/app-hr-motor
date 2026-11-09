@@ -82,6 +82,16 @@ return [
         'login_hint' => env('GOOGLE_BUSINESS_PROFILE_LOGIN_HINT'),
     ],
 
+    'motorflash_message' => [
+        // This remains pending until a real integration records a connected state.
+        'integration_status' => env('MOTORFLASH_MESSAGE_INTEGRATION_STATUS', 'pending'),
+    ],
+
+    'enreach' => [
+        // This remains pending until a real integration records a connected state.
+        'integration_status' => env('ENREACH_INTEGRATION_STATUS', 'pending'),
+    ],
+
     'company' => [
         'my_maps_embed_url' => env('COMPANY_MY_MAPS_EMBED_URL', 'https://www.google.com/maps/d/embed?mid=1BuhTvvVFqOEHfrW81pbp4xteNZi8SNA&ehbc=2E312F'),
     ],
