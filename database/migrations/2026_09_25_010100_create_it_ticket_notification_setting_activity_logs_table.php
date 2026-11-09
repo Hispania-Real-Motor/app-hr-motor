@@ -15,14 +15,18 @@ return new class extends Migration
             Schema::create($tableName, function (Blueprint $table): void {
                 $table->id();
                 $table->string('action');
-                $table->foreignId('actor_user_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->unsignedBigInteger('actor_user_id')->nullable();
+                $table->foreign('actor_user_id', 'it_ticket_notif_actor_fk')
+                    ->references('id')
+                    ->on('users')
+                    ->nullOnDelete();
                 $table->string('actor_name');
                 $table->string('actor_email')->nullable();
                 $table->json('changes');
                 $table->timestamp('created_at')->useCurrent();
 
-                $table->index(['action', 'created_at']);
-                $table->index(['actor_user_id', 'created_at']);
+                $table->index(['action', 'created_at'], 'it_ticket_notif_action_created_idx');
+                $table->index(['actor_user_id', 'created_at'], 'it_ticket_notif_actor_created_idx');
             });
 
             return;
@@ -70,19 +74,19 @@ return new class extends Migration
 
         if (! $this->hasIndex($indexes, ['action', 'created_at'])) {
             Schema::table($tableName, function (Blueprint $table): void {
-                $table->index(['action', 'created_at']);
+                $table->index(['action', 'created_at'], 'it_ticket_notif_action_created_idx');
             });
         }
 
         if (! $this->hasIndex($indexes, ['actor_user_id', 'created_at'])) {
             Schema::table($tableName, function (Blueprint $table): void {
-                $table->index(['actor_user_id', 'created_at']);
+                $table->index(['actor_user_id', 'created_at'], 'it_ticket_notif_actor_created_idx');
             });
         }
 
         if ($foreignKeyState === 'missing') {
             Schema::table($tableName, function (Blueprint $table): void {
-                $table->foreign('actor_user_id')
+                $table->foreign('actor_user_id', 'it_ticket_notif_actor_fk')
                     ->references('id')
                     ->on('users')
                     ->nullOnDelete();
