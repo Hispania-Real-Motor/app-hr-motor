@@ -70,6 +70,43 @@ class EnreachErrorPhonesPage extends Page implements HasTable
         return (string) (is_array($record) ? $record['phone_normalized'] : $record->phone_normalized);
     }
 
+    public function getTableRecord(?string $key): Model|array|null
+    {
+        if ($key === null) {
+            return null;
+        }
+
+        return $this->getTable()->getQuery(isResolvingRecord: true)
+            ->where('phone_normalized', $key)
+            ->first();
+    }
+
+    /** @return array{type: string, phone: string} */
+    private function getGroupedRecordKeys(Model|array|null $record): array
+    {
+        $attributes = $record instanceof Model ? $record->getAttributes() : ($record ?? []);
+        $type = (string) ($attributes['error_type'] ?? $this->type);
+        $phone = (string) ($attributes['phone_normalized'] ?? '');
+
+        abort_unless($type === EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND && $phone !== '', 404);
+
+        return [
+            'type' => $type,
+            'phone' => $phone,
+        ];
+    }
+
+    private function isGroupedRecordReviewed(Model|array|null $record): bool
+    {
+        if ($record === null) {
+            return false;
+        }
+
+        return (bool) ($record instanceof Model
+            ? $record->getAttribute('is_reviewed')
+            : ($record['is_reviewed'] ?? false));
+    }
+
     public function table(Table $table): Table
     {
         $table = $table
@@ -83,26 +120,30 @@ class EnreachErrorPhonesPage extends Page implements HasTable
                 }
 
                 return $query
-                    ->select('phone_normalized')
+                    ->select('error_type', 'phone_normalized')
                     ->selectRaw('COUNT(*) as error_count')
                     ->selectRaw('MAX(occurred_at) as last_error_at')
                     ->selectRaw(
                         'EXISTS (SELECT 1 FROM enreach_error_incidence_states states WHERE states.error_type = ? AND states.phone_normalized = enreach_error_events.phone_normalized) as is_reviewed',
                         [$this->type],
                     )
-                    ->groupBy('phone_normalized');
+                    ->groupBy('error_type', 'phone_normalized');
             })
             ->defaultSort('last_error_at', 'desc')
-            ->recordUrl(fn (EnreachErrorEvent $record): string => EnreachErrorPhoneDetailsPage::getUrl([
-                'type' => $this->type,
-                'phone' => $record->phone_normalized,
-            ]))
+            ->recordUrl(function (Model|array $record): string {
+                $keys = $this->getGroupedRecordKeys($record);
+
+                return EnreachErrorPhoneDetailsPage::getUrl([
+                    'type' => $keys['type'],
+                    'phone' => $keys['phone'],
+                ]);
+            })
             ->columns([
                 TextColumn::make('phone_normalized')->label('Teléfono buscado')->searchable(),
                 TextColumn::make('error_count')->label('Veces con error')->numeric()->sortable(),
                 TextColumn::make('last_error_at')->label('Último error')->dateTime('d/m/Y H:i')->sortable(),
             ])
-            ->recordClasses(fn (EnreachErrorEvent $record): string => (bool) $record->is_reviewed
+            ->recordClasses(fn (Model|array $record): string => (bool) (is_array($record) ? ($record['is_reviewed'] ?? false) : $record->is_reviewed)
                 ? 'bg-yellow-50 dark:bg-yellow-950/30'
                 : '');
 
@@ -114,23 +155,35 @@ class EnreachErrorPhonesPage extends Page implements HasTable
             ->actionsColumnLabel('Acciones')
             ->actions([
                 Action::make('markReviewed')
-                    ->label('Marcar como revisada')
-                    ->icon('heroicon-o-eye')
-                    ->color('warning')
+                    ->label(fn (Model|array|null $record): string => $this->isGroupedRecordReviewed($record) ? 'Quitar revisión' : 'Revisar más tarde')
+                    ->icon(fn (Model|array|null $record): string => $this->isGroupedRecordReviewed($record) ? 'heroicon-o-eye-slash' : 'heroicon-o-eye')
+                    ->color(fn (Model|array|null $record): string => $this->isGroupedRecordReviewed($record) ? 'gray' : 'warning')
                     ->visible(fn (): bool => app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'))
-                    ->action(function (EnreachErrorEvent $record): void {
+                    ->action(function (Model|array|null $record): void {
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'), 403);
+                        $keys = $this->getGroupedRecordKeys($record);
 
-                        EnreachErrorIncidenceState::query()->updateOrCreate(
-                            [
-                                'error_type' => $this->type,
-                                'phone_normalized' => $record->phone_normalized,
-                            ],
-                            ['reviewed_at' => now()],
-                        );
+                        $stateQuery = EnreachErrorIncidenceState::query()
+                            ->where('error_type', $keys['type'])
+                            ->where('phone_normalized', $keys['phone']);
+
+                        $isReviewed = $stateQuery->exists();
+
+                        if ($isReviewed) {
+                            $stateQuery->delete();
+                        } else {
+                            EnreachErrorIncidenceState::query()->create([
+                                'error_type' => $keys['type'],
+                                'phone_normalized' => $keys['phone'],
+                                'reviewed_at' => now(),
+                            ]);
+                        }
 
                         $this->resetTable();
-                        Notification::make()->success()->title('Incidencia marcada como revisada.')->send();
+                        Notification::make()
+                            ->success()
+                            ->title($isReviewed ? 'Revisión quitada.' : 'Incidencia marcada para revisar más tarde.')
+                            ->send();
                     }),
                 Action::make('resolve')
                     ->label('Resolver')
@@ -143,18 +196,19 @@ class EnreachErrorPhonesPage extends Page implements HasTable
                     ->modalSubmitActionLabel('Sí, resolver incidencia')
                     ->modalCancelActionLabel('Cancelar')
                     ->visible(fn (): bool => app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'))
-                    ->action(function (EnreachErrorEvent $record): void {
+                    ->action(function (Model|array|null $record): void {
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'), 403);
+                        $keys = $this->getGroupedRecordKeys($record);
 
-                        DB::transaction(function () use ($record): void {
+                        DB::transaction(function () use ($keys): void {
                             EnreachErrorEvent::query()
-                                ->where('error_type', $this->type)
-                                ->where('phone_normalized', $record->phone_normalized)
+                                ->where('error_type', $keys['type'])
+                                ->where('phone_normalized', $keys['phone'])
                                 ->delete();
 
                             EnreachErrorIncidenceState::query()
-                                ->where('error_type', $this->type)
-                                ->where('phone_normalized', $record->phone_normalized)
+                                ->where('error_type', $keys['type'])
+                                ->where('phone_normalized', $keys['phone'])
                                 ->delete();
                         });
 

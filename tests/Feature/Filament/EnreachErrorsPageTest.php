@@ -205,6 +205,21 @@ class EnreachErrorsPageTest extends TestCase
         Livewire::test(EnreachErrorPhonesPage::class, [
             'type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
         ])
+            ->callTableAction('markReviewed', $phone);
+
+        $this->assertDatabaseMissing('enreach_error_incidence_states', [
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+            'phone_normalized' => $phone,
+        ]);
+
+        Livewire::test(EnreachErrorPhonesPage::class, [
+            'type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+        ])
+            ->callTableAction('markReviewed', $phone);
+
+        Livewire::test(EnreachErrorPhonesPage::class, [
+            'type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+        ])
             ->callTableAction('resolve', $phone);
 
         $this->assertDatabaseMissing('enreach_error_events', [
