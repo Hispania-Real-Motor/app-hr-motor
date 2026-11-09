@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\EnreachErrorEvent;
 use BackedEnum;
+use Filament\Pages\Dashboard;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,14 @@ class EnreachErrorsPage extends Page
     public function hydrate(): void
     {
         abort_unless(static::canAccess(), 403);
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        return [
+            Dashboard::getUrl() => 'Escritorio',
+            self::getUrl() => 'Enreach',
+        ];
     }
 
     public function integrationIsConnected(): bool

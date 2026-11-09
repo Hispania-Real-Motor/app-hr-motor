@@ -163,6 +163,95 @@ class EnreachErrorsPageTest extends TestCase
         ]))->assertForbidden();
     }
 
+    public function test_manage_user_can_review_and_resolve_only_the_selected_type_and_phone(): void
+    {
+        config(['services.enreach.integration_status' => 'connected']);
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'enreach-errors.view');
+        $this->grant($user, 'enreach-errors.manage');
+
+        EnreachErrorEvent::query()->create([
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+            'searched_phone' => '+34 600 123 123',
+            'occurred_at' => now(),
+            'direction' => EnreachErrorEvent::DIRECTION_INCOMING,
+            'other_party_phone' => null,
+            'source_event_id' => 'review-call-1',
+            'source_workflow' => 'test-workflow',
+        ]);
+        EnreachErrorEvent::query()->create([
+            'error_type' => 'another_error_type',
+            'searched_phone' => '+34 600 123 123',
+            'occurred_at' => now(),
+            'direction' => EnreachErrorEvent::DIRECTION_OUTGOING,
+            'other_party_phone' => null,
+            'source_event_id' => 'review-call-2',
+            'source_workflow' => 'test-workflow',
+        ]);
+
+        $phone = EnreachErrorEvent::normalizePhone('+34 600 123 123');
+
+        Livewire::actingAs($user);
+        Livewire::test(EnreachErrorPhonesPage::class, [
+            'type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+        ])
+            ->callTableAction('markReviewed', $phone);
+
+        $this->assertDatabaseHas('enreach_error_incidence_states', [
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+            'phone_normalized' => $phone,
+        ]);
+
+        Livewire::test(EnreachErrorPhonesPage::class, [
+            'type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+        ])
+            ->callTableAction('resolve', $phone);
+
+        $this->assertDatabaseMissing('enreach_error_events', [
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+            'phone_normalized' => $phone,
+        ]);
+        $this->assertDatabaseHas('enreach_error_events', [
+            'error_type' => 'another_error_type',
+            'phone_normalized' => $phone,
+        ]);
+        $this->assertDatabaseMissing('enreach_error_incidence_states', [
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+            'phone_normalized' => $phone,
+        ]);
+    }
+
+    public function test_resolved_event_cannot_be_recreated_by_an_old_n8n_retry(): void
+    {
+        config(['internal.enreach_events.secret' => 'staging-secret']);
+
+        $payload = [
+            'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND_IN_SALESFORCE,
+            'searched_phone' => '+34 600 123 123',
+            'occurred_at' => '2026-11-09T12:30:00+01:00',
+            'direction' => 'IN',
+            'source_event_id' => 'resolved-call-1',
+            'source_workflow' => 'enreach-inbound-errors',
+        ];
+
+        $this->withHeader('X-Enreach-Secret', 'staging-secret')
+            ->postJson('/api/internal/enreach/errors', $payload)
+            ->assertCreated();
+
+        EnreachErrorEvent::query()->where('source_event_id', 'resolved-call-1')->delete();
+
+        $this->withHeader('X-Enreach-Secret', 'staging-secret')
+            ->postJson('/api/internal/enreach/errors', $payload)
+            ->assertOk()
+            ->assertJsonPath('status', 'duplicate');
+
+        $this->assertDatabaseCount('enreach_error_events', 0);
+        $this->assertDatabaseHas('enreach_error_event_receipts', [
+            'source_event_id' => 'resolved-call-1',
+            'source_workflow' => 'enreach-inbound-errors',
+        ]);
+    }
+
     public function test_enreach_event_endpoint_requires_secret_and_stores_a_normalized_event(): void
     {
         config(['internal.enreach_events.secret' => 'staging-secret']);
