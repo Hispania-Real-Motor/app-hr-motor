@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\EnreachErrorEvent;
 use BackedEnum;
+use Filament\Pages\Dashboard;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\EmbeddedTable;
 use Filament\Schemas\Schema;
@@ -45,6 +46,17 @@ class EnreachErrorPhoneDetailsPage extends Page implements HasTable
     public function hydrate(): void
     {
         abort_unless(static::canAccess(), 403);
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        return [
+            Dashboard::getUrl() => 'Escritorio',
+            EnreachErrorsPage::getUrl() => 'Enreach',
+            EnreachErrorsPage::getUrl(['type' => $this->type]) => 'Teléfono de comercial no encontrado en Salesforce',
+            EnreachErrorPhonesPage::getUrl(['type' => $this->type]) => 'Teléfonos afectados',
+            self::getUrl(['type' => $this->type, 'phone' => $this->phone]) => 'Detalle del teléfono',
+        ];
     }
 
     public function integrationIsConnected(): bool
