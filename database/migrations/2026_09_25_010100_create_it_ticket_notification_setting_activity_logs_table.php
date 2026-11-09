@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 return new class extends Migration
 {
@@ -40,20 +39,20 @@ return new class extends Migration
         ];
 
         if (! Schema::hasColumns($tableName, $requiredColumns)) {
-            throw new RuntimeException(sprintf(
+            throw new \RuntimeException(sprintf(
                 'La tabla %s ya existe, pero no tiene todas las columnas esperadas. No se han aplicado cambios.',
                 $tableName,
             ));
         }
 
         if (! Schema::hasTable('users')) {
-            throw new RuntimeException('No se puede reparar la foreign key de actor_user_id porque no existe la tabla users. No se han aplicado cambios.');
+            throw new \RuntimeException('No se puede reparar la foreign key de actor_user_id porque no existe la tabla users. No se han aplicado cambios.');
         }
 
         $foreignKeyState = $this->foreignKeyState($tableName);
 
         if ($foreignKeyState === 'incompatible') {
-            throw new RuntimeException('La tabla it_ticket_notification_setting_activity_logs ya tiene una foreign key incompatible sobre actor_user_id. No se han aplicado cambios.');
+            throw new \RuntimeException('La tabla it_ticket_notification_setting_activity_logs ya tiene una foreign key incompatible sobre actor_user_id. No se han aplicado cambios.');
         }
 
         if ($foreignKeyState === 'missing' && DB::table($tableName)
@@ -64,7 +63,7 @@ return new class extends Migration
                     ->whereColumn('users.id', 'it_ticket_notification_setting_activity_logs.actor_user_id');
             })
             ->exists()) {
-            throw new RuntimeException('No se puede añadir la foreign key de actor_user_id: existen filas con usuarios inexistentes. Corrige esos datos antes de migrar. No se han aplicado cambios.');
+            throw new \RuntimeException('No se puede añadir la foreign key de actor_user_id: existen filas con usuarios inexistentes. Corrige esos datos antes de migrar. No se han aplicado cambios.');
         }
 
         $indexes = Schema::getIndexes($tableName);
