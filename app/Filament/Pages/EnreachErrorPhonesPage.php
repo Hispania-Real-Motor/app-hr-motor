@@ -76,24 +76,53 @@ class EnreachErrorPhonesPage extends Page implements HasTable
             return null;
         }
 
-        return $this->getTable()->getQuery(isResolvingRecord: true)
+        $record = $this->getTable()->getQuery(isResolvingRecord: true)
             ->where('phone_normalized', $key)
             ->first();
+
+        if ($record !== null) {
+            return $record;
+        }
+
+        // Keep a valid grouped row context so a stale click can be handled by
+        // the action with a notification instead of becoming a 404 response.
+        return (new EnreachErrorEvent)->newInstance([
+            'id' => $key,
+            'error_type' => $this->type,
+            'phone_normalized' => $key,
+            'is_reviewed' => false,
+        ]);
     }
 
-    /** @return array{type: string, phone: string} */
-    private function getGroupedRecordKeys(Model|array|null $record): array
+    /** @return array{type: string, phone: string}|null */
+    private function getGroupedRecordKeys(Model|array|null $record): ?array
     {
+        if ($record === null) {
+            return null;
+        }
+
         $attributes = $record instanceof Model ? $record->getAttributes() : ($record ?? []);
         $type = (string) ($attributes['error_type'] ?? $this->type);
         $phone = (string) ($attributes['phone_normalized'] ?? '');
 
-        abort_unless($type === EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND && $phone !== '', 404);
+        if ($type !== EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND || $phone === '') {
+            return null;
+        }
 
         return [
             'type' => $type,
             'phone' => $phone,
         ];
+    }
+
+    private function notifyMissingIncidence(): void
+    {
+        $this->resetTable();
+        Notification::make()
+            ->warning()
+            ->title('La incidencia ya no existe.')
+            ->body('La tabla se ha actualizado.')
+            ->send();
     }
 
     private function isGroupedRecordReviewed(Model|array|null $record): bool
@@ -121,6 +150,7 @@ class EnreachErrorPhonesPage extends Page implements HasTable
 
                 return $query
                     ->select('error_type', 'phone_normalized')
+                    ->selectRaw('phone_normalized as id')
                     ->selectRaw('COUNT(*) as error_count')
                     ->selectRaw('MAX(occurred_at) as last_error_at')
                     ->selectRaw(
@@ -163,6 +193,21 @@ class EnreachErrorPhonesPage extends Page implements HasTable
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'), 403);
                         $keys = $this->getGroupedRecordKeys($record);
 
+                        if ($keys === null) {
+                            $this->notifyMissingIncidence();
+
+                            return;
+                        }
+
+                        if (! EnreachErrorEvent::query()
+                            ->where('error_type', $keys['type'])
+                            ->where('phone_normalized', $keys['phone'])
+                            ->exists()) {
+                            $this->notifyMissingIncidence();
+
+                            return;
+                        }
+
                         $stateQuery = EnreachErrorIncidenceState::query()
                             ->where('error_type', $keys['type'])
                             ->where('phone_normalized', $keys['phone']);
@@ -199,6 +244,21 @@ class EnreachErrorPhonesPage extends Page implements HasTable
                     ->action(function (Model|array|null $record): void {
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'enreach-errors.manage'), 403);
                         $keys = $this->getGroupedRecordKeys($record);
+
+                        if ($keys === null) {
+                            $this->notifyMissingIncidence();
+
+                            return;
+                        }
+
+                        if (! EnreachErrorEvent::query()
+                            ->where('error_type', $keys['type'])
+                            ->where('phone_normalized', $keys['phone'])
+                            ->exists()) {
+                            $this->notifyMissingIncidence();
+
+                            return;
+                        }
 
                         DB::transaction(function () use ($keys): void {
                             EnreachErrorEvent::query()
