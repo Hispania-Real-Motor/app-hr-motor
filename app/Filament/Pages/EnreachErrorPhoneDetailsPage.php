@@ -53,7 +53,6 @@ class EnreachErrorPhoneDetailsPage extends Page implements HasTable
         return [
             Dashboard::getUrl() => 'Escritorio',
             EnreachErrorsPage::getUrl() => 'Enreach',
-            EnreachErrorsPage::getUrl(['type' => $this->type]) => 'Teléfono no encontrado en Salesforce',
             EnreachErrorPhonesPage::getUrl(['type' => $this->type]) => 'Teléfonos afectados',
             self::getUrl(['type' => $this->type, 'phone' => $this->phone]) => 'Detalle del teléfono',
         ];
