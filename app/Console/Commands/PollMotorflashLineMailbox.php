@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 class PollMotorflashLineMailbox extends Command
 {
-    protected $signature = 'motorflash:mailbox:poll {--file= : Procesa un .eml local sin conectarse al buzón} {--dry-run : Solo valida el informe, sin escribir en la base de datos}';
+    protected $signature = 'motorflash:mailbox:poll {--file= : Procesa un .eml local sin conectarse al buzón} {--dry-run : Solo valida el informe, sin escribir en la base de datos} {--inspect : Lista UIDs y asuntos sin procesar ni mover correos}';
 
     protected $description = 'Lee y procesa informes de estado de líneas de Motorflash.';
 
@@ -19,6 +19,18 @@ class PollMotorflashLineMailbox extends Command
         MotorflashLineStatusReportIngestionService $ingestion,
     ): int {
         $file = $this->option('file');
+
+        if ($this->option('inspect')) {
+            try {
+                $this->table(['UID', 'Fecha', 'Asunto'], $polling->inspect());
+
+                return self::SUCCESS;
+            } catch (\Throwable $exception) {
+                $this->error($exception->getMessage());
+
+                return self::FAILURE;
+            }
+        }
 
         if (filled($file)) {
             if (! is_file($file) || ! is_readable($file)) {
