@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libicu-dev \
     libpq-dev \
+    libc-client-dev \
+    libkrb5-dev \
     default-mysql-client \
     zip \
     nodejs \
@@ -18,6 +20,9 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
+RUN docker-php-ext-configure imap --with-kerberos --with-imap-ssl \
+    && docker-php-ext-install imap
 
 WORKDIR /var/www
 

@@ -5,7 +5,8 @@ namespace App\Filament\Widgets;
 use App\Filament\Pages\MotorflashMessageErrorsPage;
 use App\Filament\Pages\EnreachErrorsPage;
 use App\Models\EnreachErrorEvent;
-use App\Models\MotorflashMessageError;
+use App\Models\MotorflashLineIncident;
+use App\Models\MotorflashLineReportReceipt;
 use Closure;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Illuminate\Support\Facades\Log;
@@ -40,14 +41,7 @@ class MotorflashMessageErrorsOverviewWidget extends BaseWidget
         $stats = [];
 
         if (app_user_has_admin_permission(auth()->user(), 'motorflash-message-errors.view')) {
-            $stats[] = $this->integrationStat(
-                configKey: 'services.motorflash_message.integration_status',
-                label: 'Motorflash Message',
-                color: '#85C86D',
-                url: MotorflashMessageErrorsPage::getUrl(),
-                metric: 'motorflash_message_errors',
-                query: fn (): int => MotorflashMessageError::query()->where('status', 'open')->count(),
-            );
+            $stats[] = $this->motorflashLineStat();
         }
 
         if (app_user_has_admin_permission(auth()->user(), 'enreach-errors.view')) {
@@ -66,6 +60,38 @@ class MotorflashMessageErrorsOverviewWidget extends BaseWidget
         }
 
         return $stats;
+    }
+
+    private function motorflashLineStat(): AdminOverviewStat
+    {
+        $stat = AdminOverviewStat::make('Motorflash Message', '')
+            ->icon('heroicon-o-exclamation-triangle')
+            ->color('#85C86D')
+            ->url(MotorflashMessageErrorsPage::getUrl());
+
+        try {
+            if (! MotorflashLineReportReceipt::query()->exists()) {
+                return $stat->description('Estado: Pendiente de integración');
+            }
+
+            return $stat->value($this->safeCount(
+                'motorflash_line_incidents',
+                fn (): int => MotorflashLineIncident::query()
+                    ->where('error_type', MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED)
+                    ->where('status', '!=', MotorflashLineIncident::STATUS_CLOSED)
+                    ->whereNotNull('phone_normalized')
+                    ->distinct()
+                    ->count('phone_normalized'),
+            ));
+        } catch (Throwable $exception) {
+            report($exception);
+            Log::error('No se pudo comprobar el estado de los informes de líneas de Motorflash.', [
+                'metric' => 'motorflash_line_incidents',
+                'exception' => $exception,
+            ]);
+
+            return $stat->value('N/D');
+        }
     }
 
     private function integrationStat(string $configKey, string $label, string $color, string $url, string $metric, Closure $query): AdminOverviewStat
