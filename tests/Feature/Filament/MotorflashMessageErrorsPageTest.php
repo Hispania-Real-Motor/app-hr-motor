@@ -7,7 +7,8 @@ use App\Filament\Pages\AdminPermissionsPage;
 use App\Filament\Widgets\AdminOverviewWidget;
 use App\Filament\Widgets\MotorflashMessageErrorsOverviewWidget;
 use App\Models\AdminPermissionGrant;
-use App\Models\MotorflashMessageError;
+use App\Models\MotorflashLineIncident;
+use App\Models\MotorflashLineReportReceipt;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -52,14 +53,22 @@ class MotorflashMessageErrorsPageTest extends TestCase
 
         $this->get(MotorflashMessageErrorsPage::getUrl())
             ->assertOk()
-            ->assertSee('Todavía no hay conexión con n8n');
+            ->assertSee('Líneas desconectadas de Meta')
+            ->assertSee('Pendiente de integración')
+            ->assertSee('Escritorio')
+            ->assertDontSee('Recibido');
     }
 
-    public function test_connected_integration_shows_zero_when_there_are_no_open_errors(): void
+    public function test_processed_report_shows_zero_when_there_are_no_open_line_errors(): void
     {
-        config(['services.motorflash_message.integration_status' => 'connected']);
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
         $this->grant($user, 'motorflash-message-errors.view');
+        MotorflashLineReportReceipt::query()->create([
+            'fingerprint' => str_repeat('a', 64),
+            'total_lines' => 62,
+            'problem_lines' => 0,
+            'received_at' => now(),
+        ]);
 
         Livewire::actingAs($user);
 
@@ -69,15 +78,22 @@ class MotorflashMessageErrorsPageTest extends TestCase
             ->assertDontSee('N/D');
     }
 
-    public function test_connected_integration_shows_the_real_open_error_count(): void
+    public function test_processed_report_shows_distinct_active_line_count(): void
     {
-        config(['services.motorflash_message.integration_status' => 'connected']);
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
         $this->grant($user, 'motorflash-message-errors.view');
 
-        MotorflashMessageError::query()->create(['summary' => 'Error abierto 1', 'status' => 'open']);
-        MotorflashMessageError::query()->create(['summary' => 'Error abierto 2', 'status' => 'open']);
-        MotorflashMessageError::query()->create(['summary' => 'Error resuelto', 'status' => 'resolved']);
+        MotorflashLineReportReceipt::query()->create([
+            'fingerprint' => str_repeat('b', 64),
+            'total_lines' => 62,
+            'problem_lines' => 2,
+            'received_at' => now(),
+        ]);
+        MotorflashLineIncident::query()->createMany([
+            ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000001', 'phone_original' => '+34600000001', 'status' => 'open'],
+            ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000002', 'phone_original' => '+34600000002', 'status' => 'open'],
+            ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000003', 'phone_original' => '+34600000003', 'status' => 'closed'],
+        ]);
 
         Livewire::actingAs($user);
 
@@ -87,12 +103,17 @@ class MotorflashMessageErrorsPageTest extends TestCase
             ->assertDontSee('N/D');
     }
 
-    public function test_connected_integration_shows_nd_when_the_query_fails(): void
+    public function test_processed_report_shows_nd_when_the_line_query_fails(): void
     {
-        config(['services.motorflash_message.integration_status' => 'connected']);
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
         $this->grant($user, 'motorflash-message-errors.view');
-        Schema::dropIfExists('motorflash_message_errors');
+        MotorflashLineReportReceipt::query()->create([
+            'fingerprint' => str_repeat('c', 64),
+            'total_lines' => 62,
+            'problem_lines' => 1,
+            'received_at' => now(),
+        ]);
+        Schema::dropIfExists('motorflash_line_incidents');
 
         Livewire::actingAs($user);
 
