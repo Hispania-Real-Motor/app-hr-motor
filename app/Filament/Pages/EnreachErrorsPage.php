@@ -53,7 +53,7 @@ class EnreachErrorsPage extends Page
     {
         return [[
             'key' => self::ERROR_TYPE_COMMERCIAL_PHONE_NOT_FOUND,
-            'label' => 'Teléfono de comercial no encontrado en Salesforce',
+            'label' => 'Teléfono no encontrado en Salesforce',
             'count' => $this->errorTypeCount(),
             'url' => EnreachErrorPhonesPage::getUrl(['type' => self::ERROR_TYPE_COMMERCIAL_PHONE_NOT_FOUND]),
         ]];

@@ -128,7 +128,7 @@ class EnreachErrorsPageTest extends TestCase
         $this->actingAs($user)
             ->get(EnreachErrorsPage::getUrl())
             ->assertOk()
-            ->assertSee('Teléfono de comercial no encontrado en Salesforce')
+            ->assertSee('Teléfono no encontrado en Salesforce')
             ->assertSee('1');
 
         $phone = EnreachErrorEvent::normalizePhone('+34 600 123 123');

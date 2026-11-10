@@ -181,3 +181,8 @@ Schedule::command('chat:purge-expired-messages')
     ->dailyAt('05:30')
     ->timezone(config('app.timezone'))
     ->withoutOverlapping();
+Schedule::command('motorflash:mailbox:poll')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->when(fn (): bool => (bool) config('motorflash_mailbox.enabled')
+        && (app()->environment('production') || (bool) config('motorflash_mailbox.allow_non_production')));
