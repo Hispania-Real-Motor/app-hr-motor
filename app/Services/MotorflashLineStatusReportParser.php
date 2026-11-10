@@ -25,7 +25,9 @@ class MotorflashLineStatusReportParser
             throw new InvalidMotorflashLineReportException('El remitente original no corresponde a Motorflash Message.');
         }
 
-        if ($originalSubject === null || ! preg_match('/^\[ESTADO\s+LINEAS\]\s+(\d+)\s+de\s+(\d+)\s+l[ií]neas\s+con\s+problemas$/iu', $originalSubject, $subjectParts)) {
+        [$declaredProblems, $declaredTotal] = $this->parseReportSubject($originalSubject);
+
+        if ($declaredProblems === null || $declaredTotal === null) {
             throw new InvalidMotorflashLineReportException('El asunto no corresponde a un informe válido de estado de líneas.');
         }
 
@@ -40,8 +42,6 @@ class MotorflashLineStatusReportParser
         }
 
         $rows = $this->extractRows($body);
-        $declaredProblems = (int) $subjectParts[1];
-        $declaredTotal = (int) $subjectParts[2];
         $actualProblems = count(array_filter($rows, fn (array $row): bool => $row['is_error']));
 
         if ($declaredTotal === 0 || count($rows) !== $declaredTotal || $actualProblems !== $declaredProblems) {
@@ -125,6 +125,24 @@ class MotorflashLineStatusReportParser
         }
 
         return null;
+    }
+
+    /** @return array{0: int|null, 1: int|null} */
+    private function parseReportSubject(?string $subject): array
+    {
+        if ($subject === null) {
+            return [null, null];
+        }
+
+        if (preg_match('/^\[ESTADO\s+LINEAS\]\s+(\d+)\s+de\s+(\d+)\s+l[ií]neas\s+con\s+problemas$/iu', $subject, $parts)) {
+            return [(int) $parts[1], (int) $parts[2]];
+        }
+
+        if (preg_match('/^Todo\s+correcto\s*-\s*(\d+)\s+l[ií]neas\s+sin\s+problemas$/iu', $subject, $parts)) {
+            return [0, (int) $parts[1]];
+        }
+
+        return [null, null];
     }
 
     /** @return array<int, array<string, mixed>> */

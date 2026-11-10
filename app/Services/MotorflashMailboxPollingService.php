@@ -26,15 +26,19 @@ class MotorflashMailboxPollingService
         $skipped = 0;
 
         try {
-            $messageNumbers = imap_search($stream, 'ALL', SE_UID) ?: [];
-            rsort($messageNumbers, SORT_NUMERIC);
+            $startUid = $this->configuredStartUid();
+            $messageNumbers = array_values(array_filter(
+                imap_search($stream, 'ALL', SE_UID) ?: [],
+                fn (int|string $uid): bool => (int) $uid >= $startUid,
+            ));
+            sort($messageNumbers, SORT_NUMERIC);
             $messageNumbers = array_slice($messageNumbers, 0, max(1, (int) config('motorflash_mailbox.poll_limit', 20)));
 
             foreach ($messageNumbers as $messageNumber) {
                 $overview = imap_fetch_overview($stream, (string) $messageNumber, FT_UID)[0] ?? null;
                 $subject = $this->decodeHeader((string) ($overview->subject ?? ''));
 
-                if (! preg_match('/ESTADO\s+LINEAS/iu', $subject)) {
+                if (! $this->isReportSubject($subject)) {
                     $skipped++;
                     continue;
                 }
@@ -74,7 +78,32 @@ class MotorflashMailboxPollingService
         return compact('processed', 'duplicates', 'invalid', 'skipped');
     }
 
-    private function ensureMailboxIsAllowed(): void
+    /** @return array<int, array{uid: int, subject: string, date: string}> */
+    public function inspect(): array
+    {
+        $this->ensureMailboxIsAllowed(requireStartUid: false);
+        $stream = $this->openMailbox();
+        $messages = [];
+
+        try {
+            foreach (imap_search($stream, 'ALL', SE_UID) ?: [] as $uid) {
+                $overview = imap_fetch_overview($stream, (string) $uid, FT_UID)[0] ?? null;
+                $messages[] = [
+                    'uid' => (int) $uid,
+                    'subject' => $this->decodeHeader((string) ($overview->subject ?? '')),
+                    'date' => (string) ($overview->date ?? ''),
+                ];
+            }
+        } finally {
+            imap_close($stream);
+        }
+
+        usort($messages, fn (array $left, array $right): int => $left['uid'] <=> $right['uid']);
+
+        return $messages;
+    }
+
+    private function ensureMailboxIsAllowed(bool $requireStartUid = true): void
     {
         if (! config('motorflash_mailbox.enabled')) {
             throw new RuntimeException('La lectura del buzón de Motorflash está desactivada.');
@@ -90,9 +119,30 @@ class MotorflashMailboxPollingService
             }
         }
 
+        if ($requireStartUid) {
+            $this->configuredStartUid();
+        }
+
         if (! function_exists('imap_open')) {
             throw new RuntimeException('La extensión IMAP de PHP no está instalada.');
         }
+    }
+
+    private function configuredStartUid(): int
+    {
+        $value = config('motorflash_mailbox.start_uid');
+
+        if (! is_numeric($value) || (int) $value < 1) {
+            throw new RuntimeException('Falta configurar un MOTORFLASH_MAILBOX_START_UID válido.');
+        }
+
+        return (int) $value;
+    }
+
+    private function isReportSubject(string $subject): bool
+    {
+        return preg_match('/ESTADO\s+LINEAS/iu', $subject) === 1
+            || preg_match('/^Todo\s+correcto\s*-/iu', $subject) === 1;
     }
 
     /** @return resource */

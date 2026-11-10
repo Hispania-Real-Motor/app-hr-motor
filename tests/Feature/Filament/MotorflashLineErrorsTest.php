@@ -74,6 +74,17 @@ class MotorflashLineErrorsTest extends TestCase
         ]);
     }
 
+    public function test_todo_correcto_report_is_accepted_and_processes_ok_rows(): void
+    {
+        $rawEmail = $this->reportEmail(problemCount: 0, rows: [
+            ['company' => 'HR MOTOR - Ana', 'phone' => '+34600123456', 'status' => 'OK', 'detail' => '+34 600 12 34 56 (Ana)', 'since' => '10/11/2026 15:40'],
+        ], subject: 'Todo correcto - 1 líneas sin problemas');
+
+        $this->assertSame('created', $this->ingest($rawEmail));
+        $this->assertDatabaseCount('motorflash_line_incidents', 0);
+        $this->assertDatabaseCount('motorflash_line_report_receipts', 1);
+    }
+
     public function test_manage_permission_can_mark_a_line_in_process(): void
     {
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
@@ -135,9 +146,12 @@ class MotorflashLineErrorsTest extends TestCase
             ->assertSee('Líneas desconectadas de Meta');
     }
 
-    private function reportEmail(int $problemCount, array $rows, string $subjectSuffix = '1'): string
+    private function reportEmail(int $problemCount, array $rows, string $subjectSuffix = '1', ?string $subject = null): string
     {
         $total = count($rows);
+        $subject ??= $problemCount === 0
+            ? "Todo correcto - {$total} líneas sin problemas"
+            : "[ESTADO LINEAS] {$problemCount} de {$total} líneas con problemas";
         $rowHtml = collect($rows)->map(fn (array $row): string => sprintf(
             '<tr><td>%s</td><td>%s</td><td><b>%s</b></td><td>%s</td><td>%s</td></tr>',
             $row['company'],
@@ -147,7 +161,7 @@ class MotorflashLineErrorsTest extends TestCase
             $row['since'],
         ))->implode('');
 
-        return "From: forwarder@example.com\r\nX-Forwarded-Message-Id: <original-{$subjectSuffix}@motorflash.com>\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body><table><tr><th>Asunto: </th><td>[ESTADO LINEAS] {$problemCount} de {$total} líneas con problemas</td></tr><tr><th>Fecha: </th><td>10 Nov 2026 09:15:00 +0100</td></tr><tr><th>De: </th><td>Motorflash - Message - Estado de lineas &lt;message@motorflash.com&gt;</td></tr></table><table><tr><th>Empresa</th><th>Línea</th><th>Estado</th><th>Detalle</th><th>Desde</th></tr>{$rowHtml}</table></body></html>";
+        return "From: forwarder@example.com\r\nX-Forwarded-Message-Id: <original-{$subjectSuffix}@motorflash.com>\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body><table><tr><th>Asunto: </th><td>{$subject}</td></tr><tr><th>Fecha: </th><td>10 Nov 2026 09:15:00 +0100</td></tr><tr><th>De: </th><td>Motorflash - Message - Estado de lineas &lt;message@motorflash.com&gt;</td></tr></table><table><tr><th>Empresa</th><th>Línea</th><th>Estado</th><th>Detalle</th><th>Desde</th></tr>{$rowHtml}</table></body></html>";
     }
 
     private function ingest(string $rawEmail): string
