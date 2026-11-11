@@ -39,6 +39,8 @@ class MotorflashLineStatusReportIngestionService
                     }
                 }
 
+                $this->closeMissingRows($report);
+
                 return 'created';
             });
         } catch (UniqueConstraintViolationException) {
@@ -60,6 +62,7 @@ class MotorflashLineStatusReportIngestionService
         if ($incident === null) {
             $incident = new MotorflashLineIncident([
                 'error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED,
+                'error_reason' => $row['status'],
                 'phone_normalized' => $row['phone_normalized'],
                 'phone_original' => $row['phone_original'],
                 'line_name' => $row['line_name'],
@@ -70,6 +73,7 @@ class MotorflashLineStatusReportIngestionService
 
         $incident->fill([
             'phone_original' => $row['phone_original'],
+            'error_reason' => $row['status'],
             'line_name' => $row['line_name'],
             'company' => $row['company'],
             'last_error_detail' => $row['detail'],
@@ -114,6 +118,8 @@ class MotorflashLineStatusReportIngestionService
         $incident->update([
             'status' => MotorflashLineIncident::STATUS_CLOSED,
             'line_name' => $row['line_name'],
+            'in_process_at' => null,
+            'in_process_by_user_id' => null,
             'closed_at' => $report['report_occurred_at'],
         ]);
 
@@ -128,5 +134,43 @@ class MotorflashLineStatusReportIngestionService
             'detail' => 'Estado OK confirmado en un informe completo.',
             'occurred_at' => $report['report_occurred_at'],
         ]);
+    }
+
+    /** @param array<string, mixed> $report */
+    private function closeMissingRows(array $report): void
+    {
+        $reportedPhones = collect($report['rows'])
+            ->pluck('phone_normalized')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        MotorflashLineIncident::query()
+            ->where('error_type', MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED)
+            ->where('status', '!=', MotorflashLineIncident::STATUS_CLOSED)
+            ->whereNotIn('phone_normalized', $reportedPhones)
+            ->lockForUpdate()
+            ->get()
+            ->each(function (MotorflashLineIncident $incident) use ($report): void {
+                $incident->update([
+                    'status' => MotorflashLineIncident::STATUS_CLOSED,
+                    'in_process_at' => null,
+                    'in_process_by_user_id' => null,
+                    'closed_at' => $report['report_occurred_at'],
+                ]);
+
+                MotorflashLineIncidentHistory::query()->create([
+                    'incident_id' => $incident->getKey(),
+                    'report_fingerprint' => $report['fingerprint'],
+                    'state' => MotorflashLineIncidentHistory::STATE_CLOSED,
+                    'company' => null,
+                    'phone_original' => null,
+                    'line_name' => null,
+                    'detail' => 'Línea ausente en un informe completo.',
+                    'occurred_at' => $report['report_occurred_at'],
+                    'line_since_at' => null,
+                ]);
+            });
     }
 }

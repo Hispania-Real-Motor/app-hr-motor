@@ -15,6 +15,7 @@ class MotorflashLineIncident extends Model
 
     protected $fillable = [
         'error_type',
+        'error_reason',
         'phone_normalized',
         'phone_original',
         'line_name',

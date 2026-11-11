@@ -156,7 +156,13 @@ class MotorflashLineStatusReportParser
             preg_match_all('/<td\b[^>]*>(.*?)<\/td>/isu', $rowHtml, $cellMatches);
             $cells = array_map(fn (string $cell): string => $this->cleanText($cell), $cellMatches[1] ?? []);
 
-            if (count($cells) < 5 || ! in_array($cells[2], ['OK', 'No encontrada'], true)) {
+            if (count($cells) < 5) {
+                continue;
+            }
+
+            $status = $this->parseLineStatus($cells[2]);
+
+            if ($status === null) {
                 continue;
             }
 
@@ -170,9 +176,9 @@ class MotorflashLineStatusReportParser
                 throw new InvalidMotorflashLineReportException('El informe contiene el mismo teléfono más de una vez.');
             }
 
-            $isError = $cells[2] === 'No encontrada';
+            $isError = $status !== 'OK';
 
-            if ($isError && ! preg_match('/no longer exists in meta|line not found|l[ií]nea no encontrada|desconectad/iu', $cells[3])) {
+            if ($isError && ! preg_match('/no longer exists in meta|line not found|l[ií]nea no encontrada|desconectad|disconnected/iu', $cells[3])) {
                 throw new InvalidMotorflashLineReportException('El detalle de una línea no encontrada no corresponde al error esperado.');
             }
 
@@ -188,7 +194,7 @@ class MotorflashLineStatusReportParser
                 'line_name' => $cells[0],
                 'phone_original' => $cells[1],
                 'phone_normalized' => $phoneNormalized,
-                'status' => $cells[2],
+                'status' => $status,
                 'detail' => $cells[3],
                 'since' => $cells[4],
                 'line_since_at' => $occurredAt,
@@ -198,6 +204,23 @@ class MotorflashLineStatusReportParser
         }
 
         return $rows;
+    }
+
+    private function parseLineStatus(string $value): ?string
+    {
+        if (preg_match('/^OK$/iu', $value)) {
+            return 'OK';
+        }
+
+        if (preg_match('/^No\s+encontrada$/iu', $value)) {
+            return 'No encontrada';
+        }
+
+        if (preg_match('/^Desconectada$/iu', $value)) {
+            return 'Desconectada';
+        }
+
+        return null;
     }
 
     private function cleanText(string $value): string
