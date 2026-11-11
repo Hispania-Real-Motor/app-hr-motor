@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.access' => \App\Http\Middleware\CheckAdminAccess::class,
             'internal.basic_auth' => \App\Http\Middleware\InternalBasicAuthMiddleware::class,
             'enreach.events.secret' => \App\Http\Middleware\EnreachEventsSecretMiddleware::class,
+            'motorflash.commercial_errors.secret' => \App\Http\Middleware\MotorflashCommercialErrorsSecretMiddleware::class,
         ]);
 
         $middleware->appendToGroup('web', [
