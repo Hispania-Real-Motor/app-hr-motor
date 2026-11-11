@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\MotorflashCommercialErrorEvent;
 use App\Models\MotorflashLineIncident;
 use App\Models\MotorflashLineReportReceipt;
 use BackedEnum;
@@ -72,4 +73,29 @@ class MotorflashMessageErrorsPage extends Page
         ];
     }
 
+    public function commercialErrorsCategory(): array
+    {
+        try {
+            $grouped = MotorflashCommercialErrorEvent::query()
+                ->where('error_type', MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE)
+                ->whereNotNull('searched_email_normalized')
+                ->select('searched_email_normalized')
+                ->groupBy('searched_email_normalized');
+            $count = $grouped->get()->count();
+        } catch (\Throwable $exception) {
+            report($exception);
+            Log::error('No se pudo contar los comerciales afectados de Motorflash.', [
+                'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+                'exception' => $exception,
+            ]);
+            $count = 'N/D';
+        }
+
+        return [
+            'label' => 'Comerciales no encontrados en Salesforce',
+            'count' => $count,
+            'description' => 'Comerciales distintos afectados',
+            'url' => MotorflashCommercialErrorsPage::getUrl(),
+        ];
+    }
 }

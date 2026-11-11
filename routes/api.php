@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\InternalGoogleReviewController;
 use App\Http\Controllers\InternalEnreachErrorEventController;
+use App\Http\Controllers\InternalMotorflashCommercialErrorController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('internal.basic_auth')
@@ -18,4 +19,11 @@ Route::middleware('enreach.events.secret')
     ->group(function (): void {
         Route::post('/errors', [InternalEnreachErrorEventController::class, 'store'])
             ->name('internal.enreach.errors.store');
+    });
+
+Route::middleware('motorflash.commercial_errors.secret')
+    ->prefix('internal/motorflash')
+    ->group(function (): void {
+        Route::post('/commercial-errors', [InternalMotorflashCommercialErrorController::class, 'store'])
+            ->name('internal.motorflash.commercial-errors.store');
     });

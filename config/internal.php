@@ -8,4 +8,7 @@ return [
     'enreach_events' => [
         'secret' => env('ENREACH_EVENTS_SECRET'),
     ],
+    'motorflash_commercial_errors' => [
+        'secret' => env('MOTORFLASH_COMMERCIAL_ERRORS_SECRET'),
+    ],
 ];
