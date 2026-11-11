@@ -73,14 +73,10 @@ class MotorflashLineErrorsPage extends Page implements HasTable
                 ])]))
             ->defaultSort('last_error_at', 'desc')
             ->columns([
-                TextColumn::make('line_name')->label('Nombre de línea en Meta')->placeholder('Sin nombre')->searchable(),
+                TextColumn::make('line_name')->label('Empresa en Motorflash')->placeholder('Sin nombre')->searchable(),
                 TextColumn::make('phone_original')->label('Teléfono')->searchable(),
+                TextColumn::make('error_reason')->label('Motivo')->placeholder('Sin motivo'),
                 TextColumn::make('line_since_at')->label('Desde')->dateTime('d/m/Y H:i')->sortable(),
-                TextColumn::make('status')
-                    ->label('Estado')
-                    ->badge()
-                    ->formatStateUsing(fn (string $state): string => $state === MotorflashLineIncident::STATUS_IN_PROCESS ? 'En proceso' : 'Abierta')
-                    ->color(fn (string $state): string => $state === MotorflashLineIncident::STATUS_IN_PROCESS ? 'warning' : 'danger'),
             ])
             ->recordClasses(fn (MotorflashLineIncident $record): string => $record->status === MotorflashLineIncident::STATUS_IN_PROCESS
                 ? 'bg-yellow-50 dark:bg-yellow-950/30'
