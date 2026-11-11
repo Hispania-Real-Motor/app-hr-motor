@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Filament\Pages\MotorflashCommercialErrorsPage;
 use App\Models\AdminPermissionGrant;
 use App\Models\MotorflashCommercialErrorEvent;
+use App\Models\MotorflashCommercialErrorGroup;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -140,6 +141,11 @@ class MotorflashCommercialErrorsTest extends TestCase
         ] as $event) {
             MotorflashCommercialErrorEvent::query()->create($event);
         }
+        MotorflashCommercialErrorGroup::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email_normalized' => 'sales@example.com',
+            'status' => MotorflashCommercialErrorGroup::STATUS_OPEN,
+        ]);
 
         Livewire::actingAs($user);
         Livewire::test(MotorflashCommercialErrorsPage::class)
@@ -148,6 +154,90 @@ class MotorflashCommercialErrorsTest extends TestCase
             ->assertSee('Último error')
             ->assertSee('SALES@EXAMPLE.COM')
             ->assertSee('2');
+    }
+
+    public function test_manage_actions_toggle_group_state_and_keep_it_when_a_new_event_arrives(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+        $this->grant($user, 'motorflash-message-errors.manage');
+
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload(), $this->headers())
+            ->assertCreated();
+
+        $component = Livewire::actingAs($user)->test(MotorflashCommercialErrorsPage::class);
+        $record = $component->instance()->getTableRecords()->first();
+
+        $component->callTableAction('markInProcess', $record);
+
+        $group = MotorflashCommercialErrorGroup::query()->firstOrFail();
+        $this->assertSame(MotorflashCommercialErrorGroup::STATUS_IN_PROCESS, $group->status);
+        $this->assertStringContainsString('bg-yellow', $component->html());
+
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload([
+            'source_event_id' => 'event-2',
+            'searched_email' => 'SALES@EXAMPLE.COM',
+        ]), $this->headers())->assertCreated();
+
+        $this->assertSame(
+            MotorflashCommercialErrorGroup::STATUS_IN_PROCESS,
+            $group->fresh()->status,
+        );
+
+        $component = Livewire::actingAs($user)->test(MotorflashCommercialErrorsPage::class);
+        $record = $component->instance()->getTableRecords()->first();
+        $component->callTableAction('markInProcess', $record);
+
+        $this->assertDatabaseHas('motorflash_commercial_error_groups', [
+            'id' => $group->id,
+            'status' => MotorflashCommercialErrorGroup::STATUS_OPEN,
+            'in_process_at' => null,
+            'in_process_by_user_id' => null,
+        ]);
+    }
+
+    public function test_view_only_user_cannot_execute_manage_actions(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload(), $this->headers())
+            ->assertCreated();
+
+        $component = Livewire::actingAs($user)->test(MotorflashCommercialErrorsPage::class);
+
+        $this->assertFalse(app_user_has_admin_permission($user, 'motorflash-message-errors.manage'));
+        $this->assertStringNotContainsString('Marcar en proceso', $component->html());
+        $this->assertStringNotContainsString('Eliminar', $component->html());
+    }
+
+    public function test_manage_can_delete_group_events_but_receipt_idempotency_remains(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+        $this->grant($user, 'motorflash-message-errors.manage');
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload(), $this->headers())
+            ->assertCreated();
+
+        $component = Livewire::actingAs($user)->test(MotorflashCommercialErrorsPage::class);
+        $record = $component->instance()->getTableRecords()->first();
+        $component->callTableAction('deleteGroup', $record);
+
+        $this->assertDatabaseCount('motorflash_commercial_error_events', 0);
+        $this->assertDatabaseCount('motorflash_commercial_error_groups', 0);
+        $this->assertDatabaseCount('motorflash_commercial_error_receipts', 1);
+
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload(), $this->headers())
+            ->assertOk()
+            ->assertJson(['status' => 'duplicate']);
+
+        $this->assertDatabaseCount('motorflash_commercial_error_events', 0);
+
+        $this->postJson('/api/internal/motorflash/commercial-errors', $this->payload([
+            'source_event_id' => 'event-2',
+        ]), $this->headers())->assertCreated();
+
+        $this->assertDatabaseCount('motorflash_commercial_error_events', 1);
+        $this->assertDatabaseCount('motorflash_commercial_error_groups', 1);
     }
 
     private function payload(array $overrides = []): array
