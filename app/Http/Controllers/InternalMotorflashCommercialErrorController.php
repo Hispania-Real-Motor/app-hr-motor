@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreMotorflashCommercialErrorRequest;
 use App\Models\MotorflashCommercialErrorEvent;
+use App\Models\MotorflashCommercialErrorGroup;
 use App\Models\MotorflashCommercialErrorReceipt;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -26,6 +27,15 @@ class InternalMotorflashCommercialErrorController extends Controller
                     return false;
                 }
 
+                $normalizedEmail = MotorflashCommercialErrorEvent::normalizeEmail($validated['searched_email']);
+
+                MotorflashCommercialErrorGroup::query()->firstOrCreate([
+                    'error_type' => $validated['error_type'],
+                    'searched_email_normalized' => $normalizedEmail,
+                ], [
+                    'status' => MotorflashCommercialErrorGroup::STATUS_OPEN,
+                ]);
+
                 MotorflashCommercialErrorReceipt::query()->create([
                     'source_event_id' => $validated['source_event_id'],
                     'source_workflow' => $validated['source_workflow'],
@@ -35,7 +45,7 @@ class InternalMotorflashCommercialErrorController extends Controller
                 MotorflashCommercialErrorEvent::query()->create([
                     'error_type' => $validated['error_type'],
                     'searched_email' => $validated['searched_email'],
-                    'searched_email_normalized' => MotorflashCommercialErrorEvent::normalizeEmail($validated['searched_email']),
+                    'searched_email_normalized' => $normalizedEmail,
                     'occurred_at' => CarbonImmutable::parse($validated['occurred_at']),
                     'source_event_id' => $validated['source_event_id'],
                     'source_workflow' => $validated['source_workflow'],
