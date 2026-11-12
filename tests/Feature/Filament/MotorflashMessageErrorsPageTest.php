@@ -7,6 +7,8 @@ use App\Filament\Pages\AdminPermissionsPage;
 use App\Filament\Widgets\AdminOverviewWidget;
 use App\Filament\Widgets\MotorflashMessageErrorsOverviewWidget;
 use App\Models\AdminPermissionGrant;
+use App\Models\MotorflashCommercialErrorEvent;
+use App\Models\MotorflashCommercialErrorGroup;
 use App\Models\MotorflashLineIncident;
 use App\Models\MotorflashLineReportReceipt;
 use App\Models\User;
@@ -67,6 +69,7 @@ class MotorflashMessageErrorsPageTest extends TestCase
             'fingerprint' => str_repeat('a', 64),
             'total_lines' => 62,
             'problem_lines' => 0,
+            'original_subject' => '[ESTADO LINEAS] 0 de 62 líneas con problemas',
             'received_at' => now(),
         ]);
 
@@ -87,18 +90,73 @@ class MotorflashMessageErrorsPageTest extends TestCase
             'fingerprint' => str_repeat('b', 64),
             'total_lines' => 62,
             'problem_lines' => 2,
+            'original_subject' => '[ESTADO LINEAS] 2 de 62 líneas con problemas',
             'received_at' => now(),
         ]);
-        MotorflashLineIncident::query()->createMany([
+        foreach ([
             ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000001', 'phone_original' => '+34600000001', 'status' => 'open'],
             ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000002', 'phone_original' => '+34600000002', 'status' => 'open'],
             ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000003', 'phone_original' => '+34600000003', 'status' => 'closed'],
-        ]);
+        ] as $incident) {
+            MotorflashLineIncident::query()->create($incident);
+        }
 
         Livewire::actingAs($user);
 
         Livewire::test(MotorflashMessageErrorsOverviewWidget::class)
             ->assertSee('2')
+            ->assertDontSee('Pendiente de integración')
+            ->assertDontSee('N/D');
+    }
+
+    public function test_dashboard_sums_active_motorflash_groups_and_ignores_repeated_events(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+
+        MotorflashLineReportReceipt::query()->create([
+            'fingerprint' => str_repeat('d', 64),
+            'total_lines' => 62,
+            'problem_lines' => 2,
+            'original_subject' => '[ESTADO LINEAS] 2 de 62 líneas con problemas',
+            'received_at' => now(),
+        ]);
+        foreach ([
+            ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000011', 'phone_original' => '+34600000011', 'status' => 'open'],
+            ['error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED, 'phone_normalized' => '34600000012', 'phone_original' => '+34600000012', 'status' => 'open'],
+        ] as $incident) {
+            MotorflashLineIncident::query()->create($incident);
+        }
+        MotorflashCommercialErrorGroup::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email_normalized' => 'sales@example.com',
+            'status' => MotorflashCommercialErrorGroup::STATUS_OPEN,
+        ]);
+        foreach ([
+            [
+                'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+                'searched_email' => 'sales@example.com',
+                'searched_email_normalized' => 'sales@example.com',
+                'occurred_at' => now()->subMinute(),
+                'source_event_id' => 'motorflash-1',
+                'source_workflow' => MotorflashCommercialErrorEvent::SOURCE_WORKFLOW_N8N,
+            ],
+            [
+                'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+                'searched_email' => 'SALES@EXAMPLE.COM',
+                'searched_email_normalized' => 'sales@example.com',
+                'occurred_at' => now(),
+                'source_event_id' => 'motorflash-2',
+                'source_workflow' => MotorflashCommercialErrorEvent::SOURCE_WORKFLOW_N8N,
+            ],
+        ] as $event) {
+            MotorflashCommercialErrorEvent::query()->create($event);
+        }
+
+        Livewire::actingAs($user);
+
+        Livewire::test(MotorflashMessageErrorsOverviewWidget::class)
+            ->assertSee('3')
             ->assertDontSee('Pendiente de integración')
             ->assertDontSee('N/D');
     }
@@ -111,6 +169,7 @@ class MotorflashMessageErrorsPageTest extends TestCase
             'fingerprint' => str_repeat('c', 64),
             'total_lines' => 62,
             'problem_lines' => 1,
+            'original_subject' => '[ESTADO LINEAS] 1 de 62 líneas con problemas',
             'received_at' => now(),
         ]);
         Schema::dropIfExists('motorflash_line_incidents');
