@@ -133,6 +133,36 @@ class MotorflashLineErrorsPage extends Page implements HasTable
                     $this->resetTable();
                     Notification::make()->success()->title('Línea marcada como en proceso.')->send();
                 }),
+            Action::make('deleteGroup')
+                ->label('Eliminar')
+                ->icon('heroicon-o-trash')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->modalHeading('¿Seguro que quieres eliminar esta incidencia?')
+                ->modalDescription('Se eliminarán todos los registros de esta incidencia asociados a esta línea.')
+                ->modalSubmitActionLabel('Sí, eliminar incidencia')
+                ->modalCancelActionLabel('Cancelar')
+                ->visible(fn (): bool => app_user_has_admin_permission(auth()->user(), 'motorflash-message-errors.manage'))
+                ->action(function (MotorflashLineIncident $record): void {
+                    abort_unless(app_user_has_admin_permission(auth()->user(), 'motorflash-message-errors.manage'), 403);
+
+                    if (! MotorflashLineIncident::query()->whereKey($record->getKey())->exists()) {
+                        $this->resetTable();
+                        Notification::make()->warning()->title('La incidencia ya no existe.')->body('La tabla se ha actualizado.')->send();
+
+                        return;
+                    }
+
+                    DB::transaction(function () use ($record): void {
+                        MotorflashLineIncidentHistory::query()
+                            ->where('incident_id', $record->getKey())
+                            ->delete();
+                        $record->delete();
+                    });
+
+                    $this->resetTable();
+                    Notification::make()->success()->title('Incidencia eliminada correctamente.')->send();
+                }),
         ]);
     }
 

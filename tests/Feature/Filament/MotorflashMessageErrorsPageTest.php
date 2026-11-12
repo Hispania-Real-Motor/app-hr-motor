@@ -161,6 +161,36 @@ class MotorflashMessageErrorsPageTest extends TestCase
             ->assertDontSee('N/D');
     }
 
+    public function test_commercial_error_category_counts_one_visible_group_with_multiple_events(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+
+        MotorflashCommercialErrorGroup::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email_normalized' => 'sales@example.com',
+            'status' => MotorflashCommercialErrorGroup::STATUS_IN_PROCESS,
+        ]);
+
+        foreach (['commercial-1', 'commercial-2'] as $eventId) {
+            MotorflashCommercialErrorEvent::query()->create([
+                'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+                'searched_email' => 'sales@example.com',
+                'searched_email_normalized' => 'sales@example.com',
+                'occurred_at' => now(),
+                'source_event_id' => $eventId,
+                'source_workflow' => MotorflashCommercialErrorEvent::SOURCE_WORKFLOW_N8N,
+            ]);
+        }
+
+        $category = Livewire::actingAs($user)
+            ->test(MotorflashMessageErrorsPage::class)
+            ->instance()
+            ->commercialErrorsCategory();
+
+        $this->assertSame(1, $category['count']);
+    }
+
     public function test_processed_report_shows_nd_when_the_line_query_fails(): void
     {
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
