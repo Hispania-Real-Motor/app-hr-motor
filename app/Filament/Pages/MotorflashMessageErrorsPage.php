@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Models\MotorflashCommercialErrorEvent;
+use App\Models\MotorflashCommercialErrorGroup;
 use App\Models\MotorflashLineIncident;
 use App\Models\MotorflashLineReportReceipt;
 use BackedEnum;
