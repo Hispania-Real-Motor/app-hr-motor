@@ -76,12 +76,12 @@ class MotorflashMessageErrorsPage extends Page
     public function commercialErrorsCategory(): array
     {
         try {
-            $grouped = MotorflashCommercialErrorEvent::query()
-                ->where('error_type', MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE)
-                ->whereNotNull('searched_email_normalized')
-                ->select('searched_email_normalized')
-                ->groupBy('searched_email_normalized');
-            $count = $grouped->get()->count();
+            $count = MotorflashCommercialErrorGroup::query()
+                ->whereIn('status', [
+                    MotorflashCommercialErrorGroup::STATUS_OPEN,
+                    MotorflashCommercialErrorGroup::STATUS_IN_PROCESS,
+                ])
+                ->count();
         } catch (\Throwable $exception) {
             report($exception);
             Log::error('No se pudo contar los comerciales afectados de Motorflash.', [

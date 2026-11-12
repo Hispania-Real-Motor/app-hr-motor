@@ -1138,11 +1138,6 @@ Route::middleware('auth')->group(function () {
                         'image' => asset('images/tools/salesforce.webp'),
                     ],
                     [
-                        'label' => 'Monday',
-                        'url' => 'https://hr-motor.monday.com/boards/5088189551/views/39476655',
-                        'image' => asset('images/tools/monday.webp'),
-                    ],
-                    [
                         'label' => 'Google Meet',
                         'url' => 'https://meet.google.com/landing',
                         'image' => asset('images/tools/google-meet.webp'),

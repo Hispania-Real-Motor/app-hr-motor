@@ -45,7 +45,8 @@ class EnreachErrorsPageTest extends TestCase
 
         $this->get(EnreachErrorsPage::getUrl())
             ->assertOk()
-            ->assertSee('Tipos de incidencia detectados en Enreach.');
+            ->assertSee('Errores de Enreach')
+            ->assertSee('Teléfono no encontrado en Salesforce');
     }
 
     public function test_connected_enreach_shows_zero_and_real_counts(): void
@@ -72,6 +73,46 @@ class EnreachErrorsPageTest extends TestCase
 
         Livewire::test(MotorflashMessageErrorsOverviewWidget::class)
             ->assertSee('1')
+            ->assertDontSee('Pendiente de integración')
+            ->assertDontSee('N/D');
+    }
+
+    public function test_dashboard_counts_groups_across_error_types_not_repeated_events(): void
+    {
+        config(['services.enreach.integration_status' => 'connected']);
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'enreach-errors.view');
+
+        foreach ([
+            [
+                'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+                'searched_phone' => '+34 600 123 123',
+                'occurred_at' => now()->subMinutes(2),
+                'direction' => EnreachErrorEvent::DIRECTION_INCOMING,
+                'other_party_phone' => null,
+            ],
+            [
+                'error_type' => EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND,
+                'searched_phone' => '34600123123',
+                'occurred_at' => now()->subMinute(),
+                'direction' => EnreachErrorEvent::DIRECTION_OUTGOING,
+                'other_party_phone' => null,
+            ],
+            [
+                'error_type' => 'future_enreach_error_type',
+                'searched_phone' => '+34 600 222 222',
+                'occurred_at' => now(),
+                'direction' => EnreachErrorEvent::DIRECTION_INCOMING,
+                'other_party_phone' => null,
+            ],
+        ] as $event) {
+            EnreachErrorEvent::query()->create($event);
+        }
+
+        Livewire::actingAs($user);
+
+        Livewire::test(MotorflashMessageErrorsOverviewWidget::class)
+            ->assertSee('2')
             ->assertDontSee('Pendiente de integración')
             ->assertDontSee('N/D');
     }
