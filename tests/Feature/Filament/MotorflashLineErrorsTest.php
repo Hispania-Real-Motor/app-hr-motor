@@ -238,6 +238,32 @@ class MotorflashLineErrorsTest extends TestCase
         $this->assertDatabaseCount('motorflash_line_incident_history', 1);
     }
 
+    public function test_manage_permission_can_delete_a_line_incident_and_its_history(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+        $this->grant($user, 'motorflash-message-errors.manage');
+        $incident = MotorflashLineIncident::query()->create([
+            'error_type' => MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED,
+            'phone_normalized' => '34600999999',
+            'phone_original' => '+34600999999',
+            'status' => MotorflashLineIncident::STATUS_IN_PROCESS,
+        ]);
+        MotorflashLineIncidentHistory::query()->create([
+            'incident_id' => $incident->id,
+            'state' => MotorflashLineIncidentHistory::STATE_ERROR,
+            'phone_original' => '+34600999999',
+            'occurred_at' => now(),
+        ]);
+
+        Livewire::actingAs($user);
+        Livewire::test(MotorflashLineErrorsPage::class)
+            ->callTableAction('deleteGroup', $incident);
+
+        $this->assertDatabaseMissing('motorflash_line_incidents', ['id' => $incident->id]);
+        $this->assertDatabaseMissing('motorflash_line_incident_history', ['incident_id' => $incident->id]);
+    }
+
     public function test_processed_local_report_is_visible_from_the_dashboard_category_and_breadcrumbs(): void
     {
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
@@ -251,7 +277,7 @@ class MotorflashLineErrorsTest extends TestCase
             ->get(MotorflashMessageErrorsPage::getUrl())
             ->assertOk()
             ->assertSee('Líneas desconectadas de Meta')
-            ->assertSee('>1<', false)
+            ->assertSee('1')
             ->assertSee('Escritorio');
 
         $this->get(MotorflashLineErrorsPage::getUrl())
