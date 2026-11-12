@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Filament\Pages\MotorflashMessageErrorsPage;
 use App\Filament\Pages\EnreachErrorsPage;
 use App\Models\EnreachErrorEvent;
+use App\Models\MotorflashCommercialErrorGroup;
 use App\Models\MotorflashLineIncident;
 use App\Models\MotorflashLineReportReceipt;
 use Closure;
@@ -52,10 +53,11 @@ class MotorflashMessageErrorsOverviewWidget extends BaseWidget
                 url: EnreachErrorsPage::getUrl(),
                 metric: 'enreach_errors',
                 query: fn (): int => EnreachErrorEvent::query()
-                    ->where('error_type', EnreachErrorEvent::TYPE_COMMERCIAL_PHONE_NOT_FOUND)
                     ->whereNotNull('phone_normalized')
-                    ->distinct()
-                    ->count('phone_normalized'),
+                    ->select('error_type', 'phone_normalized')
+                    ->groupBy('error_type', 'phone_normalized')
+                    ->get()
+                    ->count(),
             );
         }
 
@@ -70,19 +72,27 @@ class MotorflashMessageErrorsOverviewWidget extends BaseWidget
             ->url(MotorflashMessageErrorsPage::getUrl());
 
         try {
-            if (! MotorflashLineReportReceipt::query()->exists()) {
+            $commercialGroups = MotorflashCommercialErrorGroup::query()
+                ->whereIn('status', [
+                    MotorflashCommercialErrorGroup::STATUS_OPEN,
+                    MotorflashCommercialErrorGroup::STATUS_IN_PROCESS,
+                ])
+                ->count();
+
+            $hasProcessedLineReport = MotorflashLineReportReceipt::query()->exists();
+
+            if (! $hasProcessedLineReport && $commercialGroups === 0) {
                 return $stat->description('Estado: Pendiente de integración');
             }
 
-            return $stat->value($this->safeCount(
-                'motorflash_line_incidents',
-                fn (): int => MotorflashLineIncident::query()
-                    ->where('error_type', MotorflashLineIncident::TYPE_META_LINE_DISCONNECTED)
+            $lineGroups = $hasProcessedLineReport
+                ? MotorflashLineIncident::query()
                     ->where('status', '!=', MotorflashLineIncident::STATUS_CLOSED)
                     ->whereNotNull('phone_normalized')
-                    ->distinct()
-                    ->count('phone_normalized'),
-            ));
+                    ->count()
+                : 0;
+
+            return $stat->value($lineGroups + $commercialGroups);
         } catch (Throwable $exception) {
             report($exception);
             Log::error('No se pudo comprobar el estado de los informes de líneas de Motorflash.', [
