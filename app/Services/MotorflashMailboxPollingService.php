@@ -29,12 +29,18 @@ class MotorflashMailboxPollingService
         $skipped = 0;
 
         try {
-            $cursor = MotorflashMailboxCursor::query()->firstOrCreate(
-                ['mailbox_key' => $this->cursorKey()],
-                ['last_uid' => $this->configuredStartUid() - 1],
-            );
-            $lastUid = (int) $cursor->last_uid;
-            $messageNumbers = $this->reportUids($stream, $lastUid + 1);
+            $cursor = MotorflashMailboxCursor::query()
+                ->where('mailbox_key', $this->cursorKey())
+                ->first();
+            $lastUid = $cursor?->last_uid ?? ($this->configuredStartUid() - 1);
+            $messageNumbers = $this->reportUids($stream, (int) $lastUid + 1);
+
+            if ($cursor === null) {
+                $cursor = MotorflashMailboxCursor::query()->create([
+                    'mailbox_key' => $this->cursorKey(),
+                    'last_uid' => $this->configuredStartUid() - 1,
+                ]);
+            }
             $pending = [];
             $handled = [];
             $latestProcessedAt = MotorflashLineReportReceipt::query()->max('report_occurred_at');
@@ -195,7 +201,7 @@ class MotorflashMailboxPollingService
     /** @param resource $stream @return array<int, int> */
     private function reportUids($stream, int $fromUid): array
     {
-        $criteria = sprintf('UID %d:* OR SUBJECT "[ESTADO LINEAS]" SUBJECT "Todo correcto"', $fromUid);
+        $criteria = 'OR SUBJECT "[ESTADO LINEAS]" SUBJECT "Todo correcto"';
         $uids = $this->imap->search($stream, $criteria);
         sort($uids, SORT_NUMERIC);
         return array_values(array_unique(array_filter($uids, fn (int $uid): bool => $uid >= $fromUid)));

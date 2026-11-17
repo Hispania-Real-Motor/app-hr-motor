@@ -32,7 +32,13 @@ class MotorflashMailboxImapClient
     /** @param resource $stream @return array<int, int> */
     public function search($stream, string $criteria): array
     {
-        return array_map('intval', imap_search($stream, $criteria, SE_UID) ?: []);
+        $uids = @imap_search($stream, $criteria, SE_UID);
+
+        if ($uids === false) {
+            throw new RuntimeException('No se pudo buscar mensajes en el buzón de Motorflash.');
+        }
+
+        return array_map('intval', $uids);
     }
 
     /** @param resource $stream @return object|null */
