@@ -80,7 +80,7 @@
                                             @endif
                                         </div>
 
-                                        <div class="break-words text-sm leading-7 text-brand-secondary/80">{!! $post->rendered_body_html ?? e($body) !!}</div>
+                                        <div class="bulletin-rich-content break-words text-sm leading-7 text-brand-secondary/80">{!! $post->rendered_body_html ?? e($body) !!}</div>
 
                                         @if ($post->attachments->isNotEmpty())
                                             <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

@@ -20,6 +20,7 @@ class TablonController extends Controller
         $posts = BulletinPost::query()
             ->with(['creator:id,name,avatar_path', 'attachments'])
             ->published()
+            ->visibleTo(auth()->user())
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->paginate(10);
@@ -38,10 +39,12 @@ class TablonController extends Controller
 
     private function renderBodyHtml(string $body, Collection $users): string
     {
-        $escapedBody = e($body);
+        $sanitizedBody = BulletinPost::sanitizeBody($body);
+        $hasHtmlMarkup = $sanitizedBody !== strip_tags($sanitizedBody);
+        $escapedBody = $hasHtmlMarkup ? $sanitizedBody : nl2br(e($body));
 
         if ($escapedBody === '' || $users->isEmpty()) {
-            return nl2br($escapedBody);
+            return $escapedBody;
         }
 
         $sortedUsers = $users
@@ -60,6 +63,6 @@ class TablonController extends Controller
             $escapedBody = str_replace($escapedMention, $replacement, $escapedBody);
         }
 
-        return nl2br($escapedBody);
+        return $escapedBody;
     }
 }
