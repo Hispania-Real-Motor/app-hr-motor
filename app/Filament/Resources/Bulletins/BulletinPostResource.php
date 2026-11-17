@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Bulletins;
 
+use App\Filament\Forms\Components\BulletinRichEditor;
 use App\Filament\Resources\Bulletins\Pages\CreateBulletinPost;
 use App\Filament\Resources\Bulletins\Pages\EditBulletinPost;
 use App\Filament\Resources\Bulletins\Pages\ListBulletinLogs;
@@ -19,16 +20,20 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\RichEditor\ToolbarButtonGroup;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Enums\FontWeight;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
 class BulletinPostResource extends Resource
@@ -77,7 +82,7 @@ class BulletinPostResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['creator:id,name,avatar_path'])
+            ->with(['creator:id,name,avatar_path', 'audienceRoles'])
             ->withCount('attachments');
     }
 
@@ -88,12 +93,49 @@ class BulletinPostResource extends Resource
                 ->label('Título')
                 ->required()
                 ->maxLength(140),
-            Textarea::make('body')
+            BulletinRichEditor::make('body')
                 ->label('Contenido')
                 ->required()
                 ->maxLength(10000)
-                ->rows(14)
+                ->toolbarButtons([
+                    ['bold', 'italic', 'underline'],
+                    [ToolbarButtonGroup::make('Listas', ['bulletList', 'orderedList'])->textualButtons()],
+                    ['link', 'textColor'],
+                    ['undo', 'redo'],
+                ])
+                ->textColors([
+                    '#dc2626' => 'Rojo',
+                    '#2563eb' => 'Azul',
+                    '#15803d' => 'Verde',
+                    '#475569' => 'Gris',
+                ])
                 ->placeholder('Escribe aquí el anuncio...')
+                ->columnSpanFull(),
+            Select::make('audience_type')
+                ->label('Público destinatario')
+                ->options([
+                    BulletinPost::AUDIENCE_ALL => 'Toda la empresa',
+                    BulletinPost::AUDIENCE_ROLES => 'Roles concretos',
+                ])
+                ->default(BulletinPost::AUDIENCE_ALL)
+                ->required()
+                ->rule(Rule::in([BulletinPost::AUDIENCE_ALL, BulletinPost::AUDIENCE_ROLES]))
+                ->live()
+                ->columnSpanFull(),
+            CheckboxList::make('audience_roles')
+                ->label('Roles destinatarios')
+                ->options(User::roleLabels())
+                ->columns(3)
+                ->visible(fn (Get $get): bool => $get('audience_type') === BulletinPost::AUDIENCE_ROLES)
+                ->required(fn (Get $get): bool => $get('audience_type') === BulletinPost::AUDIENCE_ROLES)
+                ->rules(fn (Get $get): array => $get('audience_type') === BulletinPost::AUDIENCE_ROLES
+                    ? ['array', 'min:1', 'distinct']
+                    : ['nullable', 'array'])
+                ->nestedRecursiveRules(
+                    [Rule::in(array_keys(User::roleLabels()))],
+                    fn (Get $get): bool => $get('audience_type') === BulletinPost::AUDIENCE_ROLES,
+                )
+                ->dehydrated()
                 ->columnSpanFull(),
             FileUpload::make('images')
                 ->label('Imágenes')
@@ -162,6 +204,27 @@ class BulletinPostResource extends Resource
                     })
                     ->grow(false)
                     ->width('11rem'),
+                TextColumn::make('audience_type')
+                    ->label('Público destinatario')
+                    ->badge()
+                    ->state(fn (BulletinPost $record): string => $record->audience_type === BulletinPost::AUDIENCE_ROLES
+                        ? 'Roles concretos'
+                        : 'Toda la empresa')
+                    ->color(fn (BulletinPost $record): string => $record->audience_type === BulletinPost::AUDIENCE_ROLES
+                        ? 'info'
+                        : 'gray')
+                    ->tooltip(function (BulletinPost $record): ?string {
+                        if ($record->audience_type !== BulletinPost::AUDIENCE_ROLES) {
+                            return null;
+                        }
+
+                        return $record->audienceRoles
+                            ->map(fn ($audienceRole): string => User::roleLabels()[$audienceRole->role] ?? $audienceRole->role)
+                            ->implode(', ');
+                    })
+                    ->wrap()
+                    ->grow(false)
+                    ->width('15rem'),
                 TextColumn::make('published_at')
                     ->label('Fecha')
                     ->state(function (BulletinPost $record): string {
@@ -309,6 +372,15 @@ class BulletinPostResource extends Resource
     {
         $recipients = User::query()
             ->where('is_active', true)
+            ->when($post->audience_type === BulletinPost::AUDIENCE_ROLES, function (Builder $query) use ($post): void {
+                $roles = $post->audienceRoles()->pluck('role')->all();
+
+                $query->where(function (Builder $recipientQuery) use ($roles): void {
+                    $recipientQuery
+                        ->whereIn('role', $roles)
+                        ->orWhereIn('extra_role', $roles);
+                });
+            })
             ->get();
 
         if ($recipients->isEmpty()) {
@@ -333,6 +405,8 @@ class BulletinPostResource extends Resource
             'body' => 'Contenido',
             'is_published' => 'Estado',
             'published_at' => 'Fecha de publicación',
+            'audience_type' => 'Público destinatario',
+            'audience_roles' => 'Roles destinatarios',
         ];
 
         return collect($newValues)
@@ -372,6 +446,34 @@ class BulletinPostResource extends Resource
         }
     }
 
+    /**
+     * @param array<int, string> $roles
+     */
+    public static function syncAudienceRoles(BulletinPost $post, array $roles): void
+    {
+        $roles = collect($roles)
+            ->filter(fn ($role): bool => is_string($role) && array_key_exists($role, User::roleLabels()))
+            ->unique()
+            ->values();
+
+        $post->audienceRoles()->delete();
+
+        if ($post->audience_type !== BulletinPost::AUDIENCE_ROLES) {
+            return;
+        }
+
+        $post->audienceRoles()->createMany($roles->map(fn (string $role): array => ['role' => $role])->all());
+    }
+
+    public static function validateAudienceData(array $data): void
+    {
+        Validator::make($data, [
+            'audience_type' => ['required', Rule::in([BulletinPost::AUDIENCE_ALL, BulletinPost::AUDIENCE_ROLES])],
+            'audience_roles' => ['nullable', Rule::requiredIf(($data['audience_type'] ?? null) === BulletinPost::AUDIENCE_ROLES), 'array'],
+            'audience_roles.*' => ['string', 'distinct', Rule::in(array_keys(User::roleLabels()))],
+        ])->validate();
+    }
+
     protected static function compareFieldValue(BulletinPost $post, string $field, mixed $newValue): bool
     {
         return static::displayFieldValue($post, $field) !== static::displayNewFieldValue($field, $newValue);
@@ -384,6 +486,8 @@ class BulletinPostResource extends Resource
             'body' => static::excerpt($post->body),
             'is_published' => $post->is_published ? 'true' : 'false',
             'published_at' => $post->published_at?->format('Y-m-d H:i:s'),
+            'audience_type' => $post->audience_type,
+            'audience_roles' => $post->audienceRoles()->pluck('role')->sort()->values()->all(),
             default => $post->{$field},
         };
     }
@@ -394,6 +498,7 @@ class BulletinPostResource extends Resource
             'body' => static::excerpt((string) $value),
             'is_published' => (bool) $value ? 'true' : 'false',
             'published_at' => $value ? \Illuminate\Support\Carbon::parse($value)->format('Y-m-d H:i:s') : null,
+            'audience_roles' => collect($value)->sort()->values()->all(),
             default => $value,
         };
     }

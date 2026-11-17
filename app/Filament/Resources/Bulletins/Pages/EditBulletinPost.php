@@ -20,11 +20,14 @@ class EditBulletinPost extends EditRecord
 
     protected array $pendingKeepAttachmentIds = [];
 
+    protected array $pendingAudienceRoles = [];
+
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $this->record->loadMissing('attachments');
 
         $data['keep_attachment_ids'] = $this->record->attachments->pluck('id')->all();
+        $data['audience_roles'] = $this->record->audienceRoles()->pluck('role')->all();
 
         return $data;
     }
@@ -48,6 +51,8 @@ class EditBulletinPost extends EditRecord
         $currentAttachmentCount = $post->attachments()->count();
 
         $this->pendingImagePaths = array_values(array_filter(Arr::wrap($data['images'] ?? [])));
+        $this->pendingAudienceRoles = array_values(array_filter(Arr::wrap($data['audience_roles'] ?? [])));
+        BulletinPostResource::validateAudienceData($data);
         $this->pendingKeepAttachmentIds = collect($data['keep_attachment_ids'] ?? [])
             ->map(static fn ($value): int => (int) $value)
             ->filter(static fn (int $value): bool => $value > 0)
@@ -61,9 +66,14 @@ class EditBulletinPost extends EditRecord
             $data['published_at'] = now();
         }
 
-        unset($data['images'], $data['keep_attachment_ids']);
+        $audienceChangeData = $data;
+        $audienceChangeData['audience_roles'] = $this->pendingAudienceRoles;
 
-        $this->pendingActivityLogChanges = BulletinPostResource::buildChangeSet($post, $data);
+        unset($data['images'], $data['keep_attachment_ids'], $data['audience_roles']);
+
+        $data['audience_type'] = $data['audience_type'] ?? BulletinPost::AUDIENCE_ALL;
+
+        $this->pendingActivityLogChanges = BulletinPostResource::buildChangeSet($post, $audienceChangeData);
 
         $finalAttachmentCount = $this->currentAttachmentCount($post);
 
@@ -91,6 +101,8 @@ class EditBulletinPost extends EditRecord
 
         /** @var BulletinPost $post */
         $post = $this->record;
+
+        BulletinPostResource::syncAudienceRoles($post, $this->pendingAudienceRoles);
 
         $existingAttachments = $post->attachments()->get();
         $attachmentsToDelete = $existingAttachments->reject(
