@@ -101,7 +101,7 @@ class MotorflashMailboxPollingTest extends TestCase
         $imap = Mockery::mock(MotorflashMailboxImapClient::class);
         $stream = new \stdClass();
         $imap->shouldReceive('open')->once()->andReturn($stream);
-        $imap->shouldReceive('search')->once()->with($stream, Mockery::on(fn (string $criteria): bool => str_contains($criteria, 'SUBJECT "[ESTADO LINEAS]"')))->andReturn(array_keys($messages));
+        $imap->shouldReceive('search')->once()->with($stream, Mockery::on(fn (string $criteria): bool => str_contains($criteria, 'SUBJECT "[ESTADO LINEAS]"') && ! str_contains($criteria, 'UID ')))->andReturn(array_keys($messages));
         foreach ($messages as $uid => $raw) {
             $imap->shouldReceive('overview')->once()->with($stream, $uid)->andReturn((object) ['subject' => '[ESTADO LINEAS]']);
             $imap->shouldReceive('raw')->once()->with($stream, $uid)->andReturn($raw);
@@ -111,6 +111,35 @@ class MotorflashMailboxPollingTest extends TestCase
         }
         $imap->shouldReceive('close')->once()->with($stream);
         $this->app->instance(MotorflashMailboxImapClient::class, $imap);
+    }
+
+    public function test_search_error_does_not_advance_an_existing_cursor(): void
+    {
+        config()->set([
+            'motorflash_mailbox.enabled' => true,
+            'motorflash_mailbox.allow_non_production' => true,
+            'motorflash_mailbox.host' => 'imap.test',
+            'motorflash_mailbox.username' => 'user',
+            'motorflash_mailbox.password' => 'secret',
+            'motorflash_mailbox.start_uid' => 15858,
+        ]);
+        MotorflashMailboxCursor::query()->create(['mailbox_key' => 'INBOX', 'last_uid' => 15857]);
+
+        $imap = Mockery::mock(MotorflashMailboxImapClient::class);
+        $stream = new \stdClass();
+        $imap->shouldReceive('open')->once()->andReturn($stream);
+        $imap->shouldReceive('search')->once()->andThrow(new \RuntimeException('No se pudo buscar mensajes en el buzón de Motorflash.'));
+        $imap->shouldReceive('close')->once()->with($stream);
+        $this->app->instance(MotorflashMailboxImapClient::class, $imap);
+
+        try {
+            app(MotorflashMailboxPollingService::class)->poll();
+            $this->fail('La búsqueda fallida debería interrumpir el sondeo.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('No se pudo buscar mensajes en el buzón de Motorflash.', $exception->getMessage());
+        }
+
+        $this->assertSame(15857, MotorflashMailboxCursor::query()->value('last_uid'));
     }
 
     private function reportEmail(string $date, string $status = 'OK', string $detail = '+34 600 12 34 56', string $id = 'report'): string
