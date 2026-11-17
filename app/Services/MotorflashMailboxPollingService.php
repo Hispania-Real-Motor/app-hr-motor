@@ -201,7 +201,7 @@ class MotorflashMailboxPollingService
     /** @param resource $stream @return array<int, int> */
     private function reportUids($stream, int $fromUid): array
     {
-        $criteria = 'OR SUBJECT "[ESTADO LINEAS]" SUBJECT "Todo correcto"';
+        $criteria = 'SUBJECT "[ESTADO LINEAS]"';
         $uids = $this->imap->search($stream, $criteria);
         sort($uids, SORT_NUMERIC);
         return array_values(array_unique(array_filter($uids, fn (int $uid): bool => $uid >= $fromUid)));

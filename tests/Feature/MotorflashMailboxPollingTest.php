@@ -15,7 +15,7 @@ class MotorflashMailboxPollingTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_search_ignores_a_large_backlog_of_unrelated_mail(): void
+    public function test_search_uses_only_the_subject_criterion_supported_by_php_imap(): void
     {
         $this->fakeMailbox([101 => $this->reportEmail('17 Nov 2026 09:00:00 +0100')]);
 
@@ -101,7 +101,7 @@ class MotorflashMailboxPollingTest extends TestCase
         $imap = Mockery::mock(MotorflashMailboxImapClient::class);
         $stream = new \stdClass();
         $imap->shouldReceive('open')->once()->andReturn($stream);
-        $imap->shouldReceive('search')->once()->with($stream, Mockery::on(fn (string $criteria): bool => str_contains($criteria, 'SUBJECT "[ESTADO LINEAS]"') && ! str_contains($criteria, 'UID ')))->andReturn(array_keys($messages));
+        $imap->shouldReceive('search')->once()->with($stream, 'SUBJECT "[ESTADO LINEAS]"')->andReturn(array_keys($messages));
         foreach ($messages as $uid => $raw) {
             $imap->shouldReceive('overview')->once()->with($stream, $uid)->andReturn((object) ['subject' => '[ESTADO LINEAS]']);
             $imap->shouldReceive('raw')->once()->with($stream, $uid)->andReturn($raw);
