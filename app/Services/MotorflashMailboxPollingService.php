@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Exceptions\InvalidMotorflashLineReportException;
+use App\Models\MotorflashMailboxCursor;
+use App\Models\MotorflashLineReportReceipt;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -11,13 +13,14 @@ class MotorflashMailboxPollingService
     public function __construct(
         private readonly MotorflashLineStatusReportParser $parser,
         private readonly MotorflashLineStatusReportIngestionService $ingestion,
+        private readonly MotorflashMailboxImapClient $imap,
     ) {
     }
 
     /** @return array{processed: int, duplicates: int, invalid: int, skipped: int} */
     public function poll(): array
     {
-        $this->ensureMailboxIsAllowed();
+        $this->ensureMailboxIsAllowed(requireStartUid: false);
 
         $stream = $this->openMailbox();
         $processed = 0;
@@ -26,53 +29,85 @@ class MotorflashMailboxPollingService
         $skipped = 0;
 
         try {
-            $startUid = $this->configuredStartUid();
-            $messageNumbers = array_values(array_filter(
-                imap_search($stream, 'ALL', SE_UID) ?: [],
-                fn (int|string $uid): bool => (int) $uid >= $startUid,
-            ));
-            sort($messageNumbers, SORT_NUMERIC);
-            $messageNumbers = array_slice($messageNumbers, 0, max(1, (int) config('motorflash_mailbox.poll_limit', 20)));
+            $cursor = MotorflashMailboxCursor::query()->firstOrCreate(
+                ['mailbox_key' => $this->cursorKey()],
+                ['last_uid' => $this->configuredStartUid() - 1],
+            );
+            $lastUid = (int) $cursor->last_uid;
+            $messageNumbers = $this->reportUids($stream, $lastUid + 1);
+            $pending = [];
+            $handled = [];
+            $latestProcessedAt = MotorflashLineReportReceipt::query()->max('report_occurred_at');
 
             foreach ($messageNumbers as $messageNumber) {
-                $overview = imap_fetch_overview($stream, (string) $messageNumber, FT_UID)[0] ?? null;
+                $overview = $this->imap->overview($stream, $messageNumber);
                 $subject = $this->decodeHeader((string) ($overview->subject ?? ''));
 
                 if (! $this->isReportSubject($subject)) {
-                    $skipped++;
                     continue;
                 }
 
                 try {
-                    $rawEmail = imap_fetchheader($stream, (string) $messageNumber, FT_UID)
-                        . "\r\n"
-                        . imap_body($stream, (string) $messageNumber, FT_UID | FT_PEEK);
-                    $report = $this->parser->parse($rawEmail);
-                    $status = $this->ingestion->ingest($report);
-
-                    if ($status === 'duplicate') {
-                        $duplicates++;
-                    } else {
-                        $processed++;
-                    }
-
-                    $this->moveToProcessed($stream, (int) $messageNumber);
+                    $pending[] = ['uid' => $messageNumber, 'report' => $this->parser->parse($this->imap->raw($stream, $messageNumber))];
                 } catch (InvalidMotorflashLineReportException $exception) {
                     $invalid++;
                     Log::error('No se pudo validar un informe de líneas de Motorflash.', [
-                        'mailbox_uid' => (int) $messageNumber,
+                        'mailbox_uid' => $messageNumber,
                         'reason' => $exception->getMessage(),
                     ]);
+                    $handled[$messageNumber] = true;
                 } catch (\Throwable $exception) {
                     $invalid++;
                     Log::error('No se pudo procesar un informe de líneas de Motorflash.', [
-                        'mailbox_uid' => (int) $messageNumber,
+                        'mailbox_uid' => $messageNumber,
+                        'exception' => $exception::class,
+                    ]);
+                    $handled[$messageNumber] = true;
+                }
+            }
+
+            $latestProcessedAt = $latestProcessedAt !== null
+                ? \Carbon\CarbonImmutable::parse($latestProcessedAt)
+                : null;
+
+            foreach ($pending as &$item) {
+                $item['stale'] = $latestProcessedAt !== null
+                    && $item['report']['report_occurred_at'] <= $latestProcessedAt
+                    && ! MotorflashLineReportReceipt::query()
+                        ->where('fingerprint', $item['report']['fingerprint'])
+                        ->exists();
+            }
+            unset($item);
+
+            $this->advanceCursor($cursor, $messageNumbers, $handled);
+
+            usort($pending, fn (array $left, array $right): int => $left['report']['report_occurred_at'] <=> $right['report']['report_occurred_at'] ?: $left['uid'] <=> $right['uid']);
+
+            foreach ($pending as $item) {
+                try {
+                    if ($item['stale']) {
+                        $this->imap->moveToProcessed($stream, $item['uid'], (string) config('motorflash_mailbox.processed_folder', 'Procesados'));
+                        $skipped++;
+                        $handled[$item['uid']] = true;
+                        $this->advanceCursor($cursor, $messageNumbers, $handled);
+                        continue;
+                    }
+
+                    $status = $this->ingestion->ingest($item['report']);
+                    $status === 'duplicate' ? $duplicates++ : $processed++;
+                    $this->imap->moveToProcessed($stream, $item['uid'], (string) config('motorflash_mailbox.processed_folder', 'Procesados'));
+                    $handled[$item['uid']] = true;
+                    $this->advanceCursor($cursor, $messageNumbers, $handled);
+                } catch (\Throwable $exception) {
+                    $invalid++;
+                    Log::error('No se pudo procesar un informe de líneas de Motorflash.', [
+                        'mailbox_uid' => $item['uid'],
                         'exception' => $exception::class,
                     ]);
                 }
             }
         } finally {
-            imap_close($stream);
+            $this->imap->close($stream);
         }
 
         return compact('processed', 'duplicates', 'invalid', 'skipped');
@@ -86,8 +121,8 @@ class MotorflashMailboxPollingService
         $messages = [];
 
         try {
-            foreach (imap_search($stream, 'ALL', SE_UID) ?: [] as $uid) {
-                $overview = imap_fetch_overview($stream, (string) $uid, FT_UID)[0] ?? null;
+            foreach ($this->imap->search($stream, 'ALL') as $uid) {
+                $overview = $this->imap->overview($stream, $uid);
                 $messages[] = [
                     'uid' => (int) $uid,
                     'subject' => $this->decodeHeader((string) ($overview->subject ?? '')),
@@ -95,7 +130,7 @@ class MotorflashMailboxPollingService
                 ];
             }
         } finally {
-            imap_close($stream);
+            $this->imap->close($stream);
         }
 
         usort($messages, fn (array $left, array $right): int => $left['uid'] <=> $right['uid']);
@@ -123,9 +158,6 @@ class MotorflashMailboxPollingService
             $this->configuredStartUid();
         }
 
-        if (! function_exists('imap_open')) {
-            throw new RuntimeException('La extensión IMAP de PHP no está instalada.');
-        }
     }
 
     private function configuredStartUid(): int
@@ -157,31 +189,42 @@ class MotorflashMailboxPollingService
             config('motorflash_mailbox.folder', 'INBOX'),
         );
 
-        $stream = @imap_open(
-            $mailbox,
-            (string) config('motorflash_mailbox.username'),
-            (string) config('motorflash_mailbox.password'),
-            OP_READONLY,
-            1,
-            ['DISABLE_AUTHENTICATOR' => 'GSSAPI'],
-        );
-
-        if ($stream === false) {
-            throw new RuntimeException('No se pudo abrir el buzón de Motorflash.');
-        }
-
-        return $stream;
+        return $this->imap->open($mailbox, (string) config('motorflash_mailbox.username'), (string) config('motorflash_mailbox.password'));
     }
 
-    /** @param resource $stream */
-    private function moveToProcessed($stream, int $messageNumber): void
+    /** @param resource $stream @return array<int, int> */
+    private function reportUids($stream, int $fromUid): array
     {
-        if (! @imap_mail_move($stream, (string) $messageNumber, (string) config('motorflash_mailbox.processed_folder', 'Procesados'), CP_UID)) {
-            throw new RuntimeException('No se pudo mover el mensaje de Motorflash a la carpeta de procesados.');
+        $criteria = sprintf('UID %d:* OR SUBJECT "[ESTADO LINEAS]" SUBJECT "Todo correcto"', $fromUid);
+        $uids = $this->imap->search($stream, $criteria);
+        sort($uids, SORT_NUMERIC);
+        return array_values(array_unique(array_filter($uids, fn (int $uid): bool => $uid >= $fromUid)));
+    }
+
+    private function cursorKey(): string
+    {
+        return (string) config('motorflash_mailbox.folder', 'INBOX');
+    }
+
+    /** @param array<int, int> $candidateUids @param array<int, bool> $handled */
+    private function advanceCursor(MotorflashMailboxCursor $cursor, array $candidateUids, array $handled): void
+    {
+        $newLastUid = (int) $cursor->last_uid;
+
+        foreach ($candidateUids as $uid) {
+            if ($uid <= $newLastUid) {
+                continue;
+            }
+
+            if (! ($handled[$uid] ?? false)) {
+                break;
+            }
+
+            $newLastUid = $uid;
         }
 
-        if (! @imap_expunge($stream)) {
-            throw new RuntimeException('No se pudo confirmar el movimiento del mensaje de Motorflash.');
+        if ($newLastUid !== (int) $cursor->last_uid) {
+            $cursor->update(['last_uid' => $newLastUid]);
         }
     }
 
