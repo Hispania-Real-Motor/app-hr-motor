@@ -58,20 +58,27 @@ class MotorflashCommercialErrorsPage extends Page implements HasTable
     public function table(Table $table): Table
     {
         $table = $table
-            ->query(fn (): Builder => MotorflashCommercialErrorEvent::query()
-                ->join('motorflash_commercial_error_groups as groups', function ($join): void {
-                    $join->on('groups.error_type', '=', 'motorflash_commercial_error_events.error_type')
-                        ->on('groups.searched_email_normalized', '=', 'motorflash_commercial_error_events.searched_email_normalized');
+            ->query(fn (): Builder => MotorflashCommercialErrorGroup::query()
+                ->join('motorflash_commercial_error_events as events', function ($join): void {
+                    $join->on('events.error_type', '=', 'motorflash_commercial_error_groups.error_type')
+                        ->on('events.searched_email_normalized', '=', 'motorflash_commercial_error_groups.searched_email_normalized');
                 })
-                ->where('motorflash_commercial_error_events.error_type', MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE)
-                ->selectRaw('groups.id as id')
-                ->selectRaw('groups.error_type as error_type')
-                ->selectRaw('groups.searched_email_normalized as searched_email_normalized')
-                ->selectRaw('groups.status as status')
-                ->selectRaw('MIN(motorflash_commercial_error_events.searched_email) as searched_email')
-                ->selectRaw('COUNT(motorflash_commercial_error_events.id) as occurrence_count')
-                ->selectRaw('MAX(motorflash_commercial_error_events.occurred_at) as last_error_at')
-                ->groupBy('groups.id', 'groups.error_type', 'groups.searched_email_normalized', 'groups.status'))
+                ->where('motorflash_commercial_error_groups.error_type', MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE)
+                ->select([
+                    'motorflash_commercial_error_groups.id',
+                    'motorflash_commercial_error_groups.error_type',
+                    'motorflash_commercial_error_groups.searched_email_normalized',
+                    'motorflash_commercial_error_groups.status',
+                ])
+                ->selectRaw('MIN(events.searched_email) as searched_email')
+                ->selectRaw('COUNT(events.id) as occurrence_count')
+                ->selectRaw('MAX(events.occurred_at) as last_error_at')
+                ->groupBy(
+                    'motorflash_commercial_error_groups.id',
+                    'motorflash_commercial_error_groups.error_type',
+                    'motorflash_commercial_error_groups.searched_email_normalized',
+                    'motorflash_commercial_error_groups.status',
+                ))
             ->defaultSort('last_error_at', 'desc')
             ->recordClasses(fn (Model $record): string => $record->status === MotorflashCommercialErrorGroup::STATUS_IN_PROCESS
                 ? 'bg-yellow-50 dark:bg-yellow-950/30'
@@ -103,7 +110,7 @@ class MotorflashCommercialErrorsPage extends Page implements HasTable
                     ->action(function (Model $record): void {
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'motorflash-message-errors.manage'), 403);
 
-                        $group = MotorflashCommercialErrorGroup::query()->find($record->getAttribute('id'));
+                        $group = MotorflashCommercialErrorGroup::query()->find($record->getKey());
 
                         if ($group === null) {
                             $this->notifyMissingGroup();
@@ -139,7 +146,7 @@ class MotorflashCommercialErrorsPage extends Page implements HasTable
                     ->action(function (Model $record): void {
                         abort_unless(app_user_has_admin_permission(auth()->user(), 'motorflash-message-errors.manage'), 403);
 
-                        $group = MotorflashCommercialErrorGroup::query()->find($record->getAttribute('id'));
+                        $group = MotorflashCommercialErrorGroup::query()->find($record->getKey());
 
                         if ($group === null) {
                             $this->notifyMissingGroup();
