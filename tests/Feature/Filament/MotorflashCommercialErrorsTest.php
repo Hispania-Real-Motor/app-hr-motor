@@ -240,6 +240,49 @@ class MotorflashCommercialErrorsTest extends TestCase
         $this->assertDatabaseCount('motorflash_commercial_error_groups', 1);
     }
 
+    public function test_manage_actions_use_the_group_key_when_event_and_group_ids_differ(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'is_active' => true]);
+        $this->grant($user, 'motorflash-message-errors.view');
+        $this->grant($user, 'motorflash-message-errors.manage');
+
+        MotorflashCommercialErrorEvent::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email' => 'sales@example.com',
+            'searched_email_normalized' => 'sales@example.com',
+            'occurred_at' => '2026-11-11 10:00:00',
+            'source_event_id' => 'event-before-group',
+            'source_workflow' => MotorflashCommercialErrorEvent::SOURCE_WORKFLOW_N8N,
+        ]);
+        $group = MotorflashCommercialErrorGroup::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email_normalized' => 'sales@example.com',
+            'status' => MotorflashCommercialErrorGroup::STATUS_OPEN,
+        ]);
+        MotorflashCommercialErrorEvent::query()->create([
+            'error_type' => MotorflashCommercialErrorEvent::TYPE_COMMERCIAL_NOT_FOUND_IN_SALESFORCE,
+            'searched_email' => 'sales@example.com',
+            'searched_email_normalized' => 'sales@example.com',
+            'occurred_at' => '2026-11-11 11:00:00',
+            'source_event_id' => 'event-after-group',
+            'source_workflow' => MotorflashCommercialErrorEvent::SOURCE_WORKFLOW_N8N,
+        ]);
+
+        $component = Livewire::actingAs($user)->test(MotorflashCommercialErrorsPage::class);
+        $record = $component->instance()->getTableRecords()->firstOrFail();
+
+        $this->assertSame($group->id, $record->getKey());
+        $component->callTableAction('markInProcess', $record);
+        $this->assertDatabaseHas('motorflash_commercial_error_groups', [
+            'id' => $group->id,
+            'status' => MotorflashCommercialErrorGroup::STATUS_IN_PROCESS,
+        ]);
+
+        $component->callTableAction('deleteGroup', $record->fresh());
+        $this->assertDatabaseMissing('motorflash_commercial_error_groups', ['id' => $group->id]);
+        $this->assertDatabaseMissing('motorflash_commercial_error_events', ['source_event_id' => 'event-after-group']);
+    }
+
     private function payload(array $overrides = []): array
     {
         return array_merge([
