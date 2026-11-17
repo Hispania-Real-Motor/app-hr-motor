@@ -11,6 +11,5 @@ return [
     'password' => env('MOTORFLASH_MAILBOX_PASSWORD'),
     'folder' => env('MOTORFLASH_MAILBOX_FOLDER', 'INBOX'),
     'processed_folder' => env('MOTORFLASH_MAILBOX_PROCESSED_FOLDER', 'Procesados'),
-    'poll_limit' => (int) env('MOTORFLASH_MAILBOX_POLL_LIMIT', 20),
     'start_uid' => env('MOTORFLASH_MAILBOX_START_UID'),
 ];
