@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     zip \
     nodejs \
     npm \
-    && docker-php-ext-install pdo pdo_mysql mbstring zip exif pcntl bcmath intl
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring zip exif pcntl bcmath intl
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY --from=mlocati/php-extension-installer:2.9.1 /usr/bin/install-php-extensions /usr/local/bin/install-php-extensions
