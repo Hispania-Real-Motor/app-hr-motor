@@ -50,6 +50,10 @@
                             return false;
                         }
 
+                        if (! empty($child['permission']) && ! app_user_has_admin_permission($authUser, $child['permission'])) {
+                            return false;
+                        }
+
                         return true;
                     })
                     ->values()
@@ -140,6 +144,10 @@
                                 }
 
                                 if (($child['route'] ?? null) === 'tools.altas-bajas' && ! app_can_access_tools_management($authUser)) {
+                                    return false;
+                                }
+
+                                if (! empty($child['permission']) && ! app_user_has_admin_permission($authUser, $child['permission'])) {
                                     return false;
                                 }
 

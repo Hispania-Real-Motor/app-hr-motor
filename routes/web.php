@@ -20,6 +20,7 @@ use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CompanyChatController;
+use App\Http\Controllers\CallAuditController;
 use App\Http\Controllers\CommercialCommissionsController;
 use App\Http\Controllers\CurriculumsController;
 use App\Http\Controllers\FeedbackReportController;
@@ -144,6 +145,10 @@ Route::middleware('auth')->group(function () {
     });
     Route::get('/tickets', [TicketsController::class, 'index'])->name('tickets.index');
     Route::get('/tickets/informes', [TicketsController::class, 'reports'])->name('tickets.reports');
+    Route::get('/empresa/auditorias-ia-llamadas', [CallAuditController::class, 'index'])->name('call-audits.index');
+    Route::get('/empresa/auditorias-ia-llamadas/{audit}', [CallAuditController::class, 'show'])
+        ->whereNumber('audit')
+        ->name('call-audits.show');
     Route::get('/tickets/{itTicket}', [TicketsController::class, 'show'])
         ->whereNumber('itTicket')
         ->name('tickets.show');

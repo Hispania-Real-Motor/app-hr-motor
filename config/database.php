@@ -98,6 +98,20 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        'enreach_ai' => [
+            'driver' => 'pgsql',
+            'host' => env('ENREACH_AI_DB_HOST'),
+            'port' => env('ENREACH_AI_DB_PORT'),
+            'database' => env('ENREACH_AI_DB_DATABASE'),
+            'username' => env('ENREACH_AI_DB_USERNAME'),
+            'password' => env('ENREACH_AI_DB_PASSWORD'),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
