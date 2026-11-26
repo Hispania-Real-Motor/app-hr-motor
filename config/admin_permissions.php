@@ -175,6 +175,14 @@ return [
             'scope' => 'backoffice',
             'default_roles' => [User::ROLE_ADMIN],
         ],
+        'call-audits.view' => [
+            'label' => 'Consultar auditorías IA de llamadas',
+            'description' => 'Permite consultar las auditorías provisionales de llamadas y sus transcripciones.',
+            'route' => 'call-audits.index',
+            'icon' => 'phone',
+            'scope' => 'application',
+            'default_roles' => [],
+        ],
         'magazine.manage' => [
             'label' => 'Gestión de la revista mensual',
             'description' => 'Publica la edición mensual y actualiza la portada visible.',
