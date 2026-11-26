@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\EnreachCallAudit;
+use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -64,8 +66,11 @@ class CallAuditController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $commercialNames = $this->commercialNamesFor($audits->getCollection());
+
         return view('call-audits.index', [
             'audits' => $audits,
+            'commercialNames' => $commercialNames,
             'sort' => $sort,
             'direction' => $direction,
             'explicitSort' => $explicitSort,
@@ -83,12 +88,38 @@ class CallAuditController extends Controller
             ->whereHas('transcription', fn ($query) => $query->where('audited_by_ai', true))
             ->firstOrFail();
 
-        return view('call-audits.show', ['audit' => $auditRecord]);
+        $commercialName = $this->commercialNamesFor(collect([$auditRecord]))[$auditRecord->employeeId() ?? ''] ?? 'Comercial sin identificar';
+
+        return view('call-audits.show', [
+            'audit' => $auditRecord,
+            'commercialName' => $commercialName,
+        ]);
     }
 
     private function authorize(Request $request): void
     {
         abort_unless(app_user_has_admin_permission($request->user(), self::PERMISSION), 403);
+    }
+
+    private function commercialNamesFor(Collection $audits): array
+    {
+        $employeeIds = $audits
+            ->map(fn (EnreachCallAudit $audit): ?string => $audit->employeeId())
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($employeeIds->isEmpty()) {
+            return [];
+        }
+
+        return User::query()
+            ->whereIn('salesforce_user_id', $employeeIds->all())
+            ->get(['salesforce_user_id', 'name'])
+            ->groupBy('salesforce_user_id')
+            ->filter(fn (Collection $users): bool => $users->count() === 1 && filled($users->first()->name))
+            ->map(fn (Collection $users): string => (string) $users->first()->name)
+            ->all();
     }
 
     private function coverageSortExpression(string $driver): string

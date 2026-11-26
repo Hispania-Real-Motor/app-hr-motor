@@ -95,6 +95,63 @@ class CallAuditsTest extends TestCase
             ->assertDontSee('PUID-NOT-AUDITED');
     }
 
+    public function test_resolves_commercial_name_from_salesforce_employee_id_in_list_and_detail(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $commercial = User::factory()->create([
+            'name' => 'Laura Comercial',
+            'salesforce_user_id' => '005-COMMERCIAL-001',
+        ]);
+        $this->grant($user);
+
+        $transcription = $this->createTranscription('PUID-COMMERCIAL');
+        $audit = EnreachCallAudit::query()->create([
+            'transcription_id' => $transcription->id,
+            'score' => 8,
+            'audit_result' => [
+                'attribution' => [
+                    'employeeId' => $commercial->salesforce_user_id,
+                    'confirmed' => false,
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)->get(route('call-audits.index'))
+            ->assertOk()
+            ->assertSee('Laura Comercial')
+            ->assertDontSee('005-COMMERCIAL-001');
+
+        $this->get(route('call-audits.show', $audit))
+            ->assertOk()
+            ->assertSee('Laura Comercial')
+            ->assertSee('005-COMMERCIAL-001')
+            ->assertSee('Atribución confirmada')
+            ->assertSee('No');
+    }
+
+    public function test_missing_commercial_mapping_uses_fallback_name(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $this->grant($user);
+
+        foreach ([
+            ['puid' => 'PUID-MISSING-MAPPING', 'employeeId' => '005-COMMERCIAL-MISSING'],
+            ['puid' => 'PUID-MISSING', 'employeeId' => null],
+        ] as $item) {
+            $transcription = $this->createTranscription($item['puid']);
+            EnreachCallAudit::query()->create([
+                'transcription_id' => $transcription->id,
+                'audit_result' => $item['employeeId'] === null
+                    ? []
+                    : ['attribution' => ['employeeId' => $item['employeeId']]],
+            ]);
+        }
+
+        $this->actingAs($user)->get(route('call-audits.index'))
+            ->assertOk()
+            ->assertSee('Comercial sin identificar');
+    }
+
     public function test_real_audit_shape_is_mapped_to_compact_criteria_components(): void
     {
         $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
@@ -141,6 +198,44 @@ class CallAuditsTest extends TestCase
             ->assertDontSee('motivoNA')
             ->assertDontSee('evidenciaIds')
             ->assertDontSee('valoracionModelo');
+    }
+
+    public function test_not_applicable_criteria_show_only_justification(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $this->grant($user);
+        $transcription = $this->createTranscription('PUID-NA');
+
+        $audit = EnreachCallAudit::query()->create([
+            'transcription_id' => $transcription->id,
+            'audit_result' => [
+                'evaluation' => [
+                    'criterios' => [
+                        [
+                            'id' => 'C10',
+                            'valoracion' => 'N/A',
+                            'justificacion' => 'C10 no aplica a esta llamada.',
+                            'evidencias' => [['texto' => 'Evidencia C10 que no debe mostrarse.']],
+                            'contextoEvidencias' => [['texto' => 'Contexto C10 que no debe mostrarse.']],
+                        ],
+                        [
+                            'id' => 'C11',
+                            'valoracion' => 'N/E',
+                            'justificacion' => 'C11 no es evaluable.',
+                            'evidencias' => [['texto' => 'Evidencia C11 visible.']],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)->get(route('call-audits.show', $audit))
+            ->assertOk()
+            ->assertSee('No aplicable')
+            ->assertSee('C10 no aplica a esta llamada.')
+            ->assertDontSee('Evidencia C10 que no debe mostrarse.')
+            ->assertDontSee('Contexto C10 que no debe mostrarse.')
+            ->assertSee('Evidencia C11 visible.');
     }
 
     public function test_list_sorting_is_server_side_numeric_and_keeps_nulls_last(): void

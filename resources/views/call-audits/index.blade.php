@@ -22,6 +22,7 @@
                 <table class="min-w-full divide-y divide-gray-100 text-left text-sm">
                     <thead class="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <tr>
+                            <th class="px-5 py-3">Comercial</th>
                             @foreach ($sortableColumns as $column => $label)
                                 @php
                                     $isActiveSort = $explicitSort && $sort === $column;
@@ -49,6 +50,7 @@
                         @forelse ($audits as $audit)
                             @php($coverage = $audit->coverage())
                             <tr class="align-middle">
+                                <td class="px-5 py-4 text-gray-700">{{ $commercialNames[$audit->employeeId() ?? ''] ?? 'Comercial sin identificar' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-gray-600">{{ $audit->created_at?->format('d/m/Y H:i') }}</td>
                                 <td class="px-5 py-4 font-mono text-xs text-gray-700">{{ $audit->call_puid ?: 'Sin PUID' }}</td>
                                 <td class="px-5 py-4">
@@ -65,7 +67,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-5 py-12 text-center text-sm text-gray-500">No hay auditorías IA disponibles.</td>
+                                <td colspan="6" class="px-5 py-12 text-center text-sm text-gray-500">No hay auditorías IA disponibles.</td>
                             </tr>
                         @endforelse
                     </tbody>
