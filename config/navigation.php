@@ -59,6 +59,11 @@ return [
                     'label' => 'Informes Tickets',
                     'route' => 'tickets.reports',
                 ],
+                [
+                    'label' => 'Auditorías IA de llamadas',
+                    'route' => 'call-audits.index',
+                    'permission' => 'call-audits.view',
+                ],
             ],
         ],
         [

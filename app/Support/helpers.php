@@ -212,6 +212,7 @@ if (! function_exists('app_backoffice_permission_keys')) {
             'roles.view',
             'tickets-it.assign',
             'tickets-it.reports.view',
+            'call-audits.view',
         ];
 
         return collect(app_admin_permission_definitions())

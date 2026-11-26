@@ -16,6 +16,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - default
+      - shared_backend
 
   scheduler:
     build:
@@ -101,3 +104,7 @@ services:
 
 volumes:
   production_db_data:
+
+networks:
+  shared_backend:
+    external: true
