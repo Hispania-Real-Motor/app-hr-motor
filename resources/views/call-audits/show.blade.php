@@ -60,6 +60,7 @@
             <section class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm lg:p-6">
                 <h2 class="text-lg font-semibold text-brand-secondary">Resumen de la llamada</h2>
                 <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div><dt class="text-sm text-gray-500">Comercial</dt><dd class="text-lg font-semibold">{{ $commercialName }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Nota provisional</dt><dd class="text-lg font-semibold">{{ $audit->score === null ? 'Sin nota' : number_format((float) $audit->score, 2, ',', '.') . '/10' }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Cobertura</dt><dd class="text-lg font-semibold">{{ $display($audit->coverage()) }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Estado</dt><dd class="text-sm font-semibold">{{ $display($audit->status()) }}</dd></div>
@@ -167,11 +168,15 @@
                                     </svg>
                                 </span>
                             </summary>
-                            <div class="grid gap-5 bg-gray-50 px-5 py-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:px-6">
+                            <div @class([
+                                'grid gap-5 bg-gray-50 px-5 py-5 lg:px-6',
+                                'lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]' => ! $criterion['is_not_applicable'],
+                            ])>
                                 <div>
                                     <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Justificación</h3>
                                     <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">{{ $display($criterion['justification'], 'Sin justificación disponible.') }}</p>
                                 </div>
+                                @unless ($criterion['is_not_applicable'])
                                 <div>
                                     <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Evidencias</h3>
                                     @if ($criterion['evidence'] !== [])
@@ -203,6 +208,7 @@
                                         </div>
                                     @endif
                                 </div>
+                                @endunless
                             </div>
                         </details>
                     @empty

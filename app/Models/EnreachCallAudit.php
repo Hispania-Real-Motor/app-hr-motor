@@ -90,6 +90,16 @@ class EnreachCallAudit extends Model
         return $this->auditResultData()['attribution'] ?? null;
     }
 
+    public function employeeId(): ?string
+    {
+        $attribution = $this->attribution();
+        $employeeId = is_array($attribution) ? ($attribution['employeeId'] ?? null) : null;
+
+        return is_scalar($employeeId) && trim((string) $employeeId) !== ''
+            ? (string) $employeeId
+            : null;
+    }
+
     public function criteriaForDisplay(): array
     {
         $scoreCriteria = collect($this->scoreData()['criterios'] ?? [])
@@ -100,12 +110,14 @@ class EnreachCallAudit extends Model
             ->filter(fn (mixed $criterion): bool => is_array($criterion) && isset($criterion['id']))
             ->map(function (array $criterion) use ($scoreCriteria): array {
                 $metadata = $scoreCriteria->get($criterion['id'], []);
+                $evaluationStatus = $criterion['valoracion'] ?? null;
 
                 return [
                     'id' => (string) $criterion['id'],
                     'name' => $metadata['nombre'] ?? $criterion['nombre'] ?? 'Criterio sin nombre',
                     'weight' => $metadata['peso'] ?? $criterion['peso'] ?? null,
-                    'value' => self::readableEvaluationStatus($criterion['valoracion'] ?? null),
+                    'value' => self::readableEvaluationStatus($evaluationStatus),
+                    'is_not_applicable' => $evaluationStatus === 'N/A',
                     'justification' => $criterion['justificacion'] ?? null,
                     'evidence' => self::evidenceForDisplay($criterion),
                     'context' => self::contextEvidenceForDisplay($criterion),
