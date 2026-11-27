@@ -22,10 +22,11 @@
         }"
         x-effect="window.bodyScrollLock?.set('feedback-modal', open)"
     >
+        @php($feedbackPosition = request()->routeIs('call-audits.show') ? 'bottom-20 sm:bottom-24' : 'bottom-5 sm:bottom-7')
         <button
             type="button"
             @click="openModal()"
-            class="fixed bottom-5 right-5 z-[55] inline-flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-brand-primary text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-brand-primary focus:outline-none sm:bottom-7 sm:right-7 sm:h-12 sm:w-12"
+            class="fixed {{ $feedbackPosition }} right-5 z-[55] inline-flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-brand-primary text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-brand-primary focus:outline-none sm:right-7 sm:h-12 sm:w-12"
             aria-label="Reportar un bug o enviar una sugerencia"
         >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
