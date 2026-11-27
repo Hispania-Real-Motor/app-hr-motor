@@ -73,11 +73,99 @@ class EnreachCallAudit extends Model
         return self::readableStatus($this->scoreData()['estado'] ?? null);
     }
 
+    public function requiresListening(): bool
+    {
+        $result = $this->auditResultData();
+
+        if (array_key_exists('requiresListening', $result)) {
+            return is_bool($result['requiresListening']) && $result['requiresListening'];
+        }
+
+        $score = $result['score'] ?? null;
+
+        return is_array($score)
+            && array_key_exists('requiereEscucha', $score)
+            && is_bool($score['requiereEscucha'])
+            && $score['requiereEscucha'];
+    }
+
+    public function criticalGlobal(): bool
+    {
+        $value = $this->scoreData()['criticoGlobal'] ?? null;
+
+        return is_bool($value) && $value;
+    }
+
+    public function listeningAlerts(): array
+    {
+        $result = $this->auditResultData();
+        $sources = array_merge(
+            self::alertItems($result['alerts'] ?? null),
+            self::alertItems($this->scoreData()['avisos'] ?? null),
+        );
+        $alerts = [];
+        $seen = [];
+
+        foreach ($sources as $source) {
+            $alert = self::normalizeListeningAlert($source);
+
+            if ($alert === null) {
+                continue;
+            }
+
+            $key = self::alertKey($alert);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $alerts[] = $alert;
+        }
+
+        return $alerts;
+    }
+
     public function alerts(): array
     {
         $alerts = $this->scoreData()['alertas'] ?? [];
 
         return is_array($alerts) ? array_values($alerts) : (is_scalar($alerts) ? [(string) $alerts] : []);
+    }
+
+    /**
+     * Returns only relevant alerts that are not already shown in the listening block.
+     * This is presentation data; the stored JSON is left untouched.
+     */
+    public function additionalAlerts(): array
+    {
+        $listeningAlerts = $this->listeningAlerts();
+        $additional = [];
+
+        foreach ($this->alerts() as $source) {
+            $alert = self::normalizeListeningAlert($source);
+
+            if ($alert === null) {
+                continue;
+            }
+
+            $isDuplicate = false;
+
+            foreach ($listeningAlerts as $listeningAlert) {
+                if (self::alertsRepresentSameIncident($alert, $listeningAlert)) {
+                    $isDuplicate = true;
+                    break;
+                }
+            }
+
+            if ($isDuplicate) {
+                continue;
+            }
+
+            $additional[] = $alert;
+        }
+
+        return $additional;
     }
 
     public function sourceQuality(): mixed
@@ -227,6 +315,243 @@ class EnreachCallAudit extends Model
         }
 
         return $evidence;
+    }
+
+    private static function alertItems(mixed $value): array
+    {
+        if (is_scalar($value)) {
+            return [(string) $value];
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_is_list($value) ? $value : [$value];
+    }
+
+    private static function normalizeListeningAlert(mixed $source): ?array
+    {
+        if (is_scalar($source)) {
+            $reason = trim((string) $source);
+
+            return $reason === '' ? null : [
+                'code' => self::legacyAlertCode($reason),
+                'criterion' => null,
+                'severity' => null,
+                'reason' => self::legacyAlertReason($reason),
+                'evidences' => [],
+            ];
+        }
+
+        if (! is_array($source)) {
+            return null;
+        }
+
+        $read = static function (array $item, array $keys): mixed {
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $item) && is_scalar($item[$key])) {
+                    $value = trim((string) $item[$key]);
+
+                    if ($value !== '') {
+                        return $value;
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $evidenceValue = $source['evidencias'] ?? $source['evidence'] ?? null;
+        $evidenceItems = self::alertItems($evidenceValue);
+        $evidences = [];
+
+        foreach ($evidenceItems as $item) {
+            if (is_string($item) && trim($item) !== '') {
+                $evidences[] = ['text' => $item, 'id' => null, 'actor' => null, 'from' => null, 'until' => null];
+                continue;
+            }
+
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $text = $read($item, ['texto', 'text', 'cita', 'quote']);
+
+            if ($text === null) {
+                continue;
+            }
+
+            $evidences[] = [
+                'text' => $text,
+                'id' => $read($item, ['id', 'fragmentId', 'fragment_id']),
+                'actor' => $read($item, ['actor', 'interlocutor', 'speaker']),
+                'from' => $read($item, ['desde', 'from', 'inicio', 'start']),
+                'until' => $read($item, ['hasta', 'until', 'fin', 'end']),
+            ];
+        }
+
+        $alert = [
+            'code' => $read($source, ['codigo', 'code', 'codigoIncidencia', 'incidentCode']),
+            'criterion' => $read($source, ['criterio', 'criterion', 'criterioId', 'criterionId']),
+            'severity' => $read($source, ['severidad', 'severity']),
+            'reason' => $read($source, ['motivo', 'reason', 'descripcion', 'description']),
+            'evidences' => self::deduplicateAlertEvidence($evidences),
+        ];
+
+        return $alert['code'] !== null || $alert['criterion'] !== null || $alert['severity'] !== null
+            || $alert['reason'] !== null || $alert['evidences'] !== []
+            ? $alert
+            : null;
+    }
+
+    private static function deduplicateAlertEvidence(array $items): array
+    {
+        $seen = [];
+        $result = [];
+
+        foreach ($items as $item) {
+            $key = $item['id'] !== null
+                ? 'id:' . $item['id']
+                : hash('sha256', json_encode([$item['text'], $item['actor'], $item['from'], $item['until']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $result[] = $item;
+        }
+
+        return $result;
+    }
+
+    private static function alertKey(array $alert): string
+    {
+        $evidenceKeys = self::alertEvidenceKeys($alert['evidences'] ?? []);
+        $identity = [
+            $alert['code'],
+            $alert['criterion'],
+            $alert['severity'],
+            $evidenceKeys,
+        ];
+
+        if ($evidenceKeys === []) {
+            $identity[] = self::normalizedAlertPart($alert['reason'] ?? null);
+        }
+
+        return hash('sha256', json_encode($identity, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private static function alertsRepresentSameIncident(array $left, array $right): bool
+    {
+        $leftCode = self::normalizedAlertPart($left['code'] ?? null);
+        $rightCode = self::normalizedAlertPart($right['code'] ?? null);
+        $leftCriterion = self::normalizedAlertPart($left['criterion'] ?? null);
+        $rightCriterion = self::normalizedAlertPart($right['criterion'] ?? null);
+
+        $leftReason = self::normalizedAlertPart($left['reason'] ?? null);
+
+        // Legacy alerts are often just a sentence. Compare them conservatively
+        // with the structured reason or an exact evidence quote.
+        if ($leftCode === null && $leftCriterion === null && ($left['evidences'] ?? []) === [] && $leftReason !== null) {
+            if ($leftReason === self::normalizedAlertPart($right['reason'] ?? null)) {
+                return true;
+            }
+
+            foreach ($right['evidences'] ?? [] as $evidence) {
+                if ($leftReason === self::normalizedAlertPart($evidence['text'] ?? null)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($leftCode !== null && $rightCode !== null && $leftCode !== $rightCode) {
+            return false;
+        }
+
+        if ($leftCriterion !== null && $rightCriterion !== null && $leftCriterion !== $rightCriterion) {
+            return false;
+        }
+
+        $leftEvidence = self::alertEvidenceKeys($left['evidences'] ?? []);
+        $rightEvidence = self::alertEvidenceKeys($right['evidences'] ?? []);
+
+        // A legacy text alert can be the compact representation of a
+        // structured incident and therefore does not repeat its evidence.
+        if ($leftEvidence === [] && $leftCode !== null && $leftReason !== null) {
+            return $rightCode === $leftCode
+                && $leftReason === self::normalizedAlertPart($right['reason'] ?? null);
+        }
+
+        if ($leftEvidence !== [] || $rightEvidence !== []) {
+            return $leftEvidence !== [] && $leftEvidence === $rightEvidence;
+        }
+
+        $rightReason = self::normalizedAlertPart($right['reason'] ?? null);
+
+        return $leftReason !== null && $leftReason === $rightReason;
+    }
+
+    private static function legacyAlertCode(string $value): ?string
+    {
+        if (preg_match('/^\s*(?:cr[ií]tico|aviso)\s*:\s*([a-z0-9][a-z0-9_-]*)\s+(.+)$/iu', $value, $matches) !== 1) {
+            return null;
+        }
+
+        return trim($matches[1]);
+    }
+
+    private static function legacyAlertReason(string $value): string
+    {
+        if (preg_match('/^\s*(?:cr[ií]tico|aviso)\s*:\s*[a-z0-9][a-z0-9_-]*\s+(.+)$/iu', $value, $matches) === 1) {
+            return trim($matches[1]);
+        }
+
+        return $value;
+    }
+
+    private static function alertEvidenceKeys(array $evidences): array
+    {
+        $keys = [];
+
+        foreach ($evidences as $evidence) {
+            if (! is_array($evidence)) {
+                continue;
+            }
+
+            $keys[] = $evidence['id'] !== null && $evidence['id'] !== ''
+                ? 'id:' . self::normalizedAlertPart($evidence['id'])
+                : 'value:' . hash('sha256', json_encode([
+                    self::normalizedAlertPart($evidence['text'] ?? null),
+                    self::normalizedAlertPart($evidence['actor'] ?? null),
+                    self::normalizedAlertPart($evidence['from'] ?? null),
+                    self::normalizedAlertPart($evidence['until'] ?? null),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
+
+        sort($keys);
+
+        return $keys;
+    }
+
+    private static function normalizedAlertPart(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return function_exists('mb_strtolower')
+            ? mb_strtolower((string) preg_replace('/\s+/u', ' ', $value), 'UTF-8')
+            : strtolower((string) preg_replace('/\s+/', ' ', $value));
     }
 
 }

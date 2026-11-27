@@ -7,9 +7,10 @@
         $transcription = $audit->transcription;
         $evaluation = $audit->evaluationData();
         $criteria = $audit->criteriaForDisplay();
-        $alerts = $audit->alerts();
-        $sourceQuality = $audit->sourceQuality();
-        $attribution = $audit->attribution();
+        $alerts = $audit->additionalAlerts();
+        $requiresListening = $audit->requiresListening();
+        $listeningAlerts = $audit->listeningAlerts();
+        $criticalGlobal = $audit->criticalGlobal();
         $display = fn (mixed $value, string $fallback = 'No disponible'): string => $value === null
             ? $fallback
             : (is_bool($value) ? ($value ? 'Sí' : 'No') : (is_scalar($value) ? (string) $value : $fallback));
@@ -45,18 +46,105 @@
         $strengths = $textList($evaluation['fortalezas'] ?? null);
         $improvements = $textList($evaluation['mejoras'] ?? null);
         $actionPlan = $textList($evaluation['planAccion'] ?? null);
-        $sourceQualityItems = $textList($sourceQuality);
     @endphp
 
     <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <a href="{{ route('call-audits.index') }}" class="text-sm font-semibold text-brand-primary hover:underline">← Volver a auditorías</a>
         <div class="mb-8 mt-5">
-            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-brand-primary">Empresa</p>
-            <h1 class="mt-2 text-3xl font-bold text-brand-secondary">Detalle de auditoría IA</h1>
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.18em] text-brand-primary">Empresa</p>
+                    <h1 class="mt-2 text-3xl font-bold text-brand-secondary">Detalle de auditoría IA</h1>
+                </div>
+                @if (app_user_has_admin_permission(auth()->user(), 'call-audits.delete'))
+                    <div x-data="{ deleteOpen: false }" @keydown.escape.window="deleteOpen = false">
+                        <button type="button" @click="deleteOpen = true" class="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500/30">
+                            <x-heroicon-o-trash class="h-4 w-4" aria-hidden="true" />
+                            Eliminar auditoría
+                        </button>
+
+                        <div x-cloak x-show="deleteOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-sm" @click.self="deleteOpen = false" role="dialog" aria-modal="true" aria-labelledby="delete-audit-title">
+                            <div class="w-full max-w-xl rounded-[2rem] bg-white p-6 text-left shadow-2xl">
+                                <div class="flex items-start justify-between gap-4 border-b border-brand-secondary/10 pb-4">
+                                    <div>
+                                        <p class="text-left text-xs font-semibold uppercase tracking-[0.18em] text-rose-600">Eliminar auditoría IA</p>
+                                        <h2 id="delete-audit-title" class="mt-1 text-left text-xl font-bold tracking-tight text-brand-secondary">¿Seguro que quieres eliminarla?</h2>
+                                    </div>
+                                    <button type="button" @click="deleteOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700" aria-label="Cerrar modal">
+                                        <x-heroicon-o-x-mark class="h-5 w-5" aria-hidden="true" />
+                                    </button>
+                                </div>
+                                <p class="mt-5 text-left text-sm leading-6 text-brand-secondary/70">Esta acción eliminará definitivamente la auditoría y su transcripción asociada. No se puede deshacer.</p>
+                                <form method="POST" action="{{ route('call-audits.destroy', $audit) }}" class="mt-6 flex flex-wrap justify-end gap-3">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="button" @click="deleteOpen = false" class="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-brand-secondary transition hover:bg-slate-50">Cancelar</button>
+                                    <button type="submit" class="inline-flex h-11 items-center justify-center rounded-2xl bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-500">Eliminar auditoría</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            </div>
             <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">Evaluación provisional basada en una transcripción automática. Puede requerir contraste con el audio.</p>
         </div>
 
         <div class="space-y-6">
+            @if ($requiresListening)
+                <section id="requires-listening" class="scroll-mt-6 rounded-3xl border border-red-200 border-l-4 border-l-red-600 bg-red-50 p-5 shadow-sm lg:p-6">
+                    <div class="flex items-start gap-3">
+                        <x-heroicon-o-exclamation-triangle class="mt-0.5 h-6 w-6 shrink-0 text-red-700" aria-hidden="true" />
+                        <div class="min-w-0">
+                            <h2 class="text-lg font-bold text-red-900">Requiere escucha del responsable</h2>
+                            <p class="mt-2 text-sm leading-6 text-red-900/80">Incidencia detectada por IA pendiente de contrastar con el audio. El comercial mostrado no implica necesariamente que pronunciara la frase: en una transferencia pueden intervenir varias personas.</p>
+                        </div>
+                    </div>
+
+                    @if ($criticalGlobal)
+                        <p class="mt-4 rounded-xl border border-red-200 bg-white/70 px-4 py-3 text-sm font-semibold text-red-900">El crítico global anula la nota de la evaluación.</p>
+                    @endif
+
+                    @if ($listeningAlerts !== [])
+                        <div class="mt-5 space-y-4">
+                            @foreach ($listeningAlerts as $listeningAlert)
+                                <article class="rounded-2xl border border-red-200 bg-white/80 p-4">
+                                    <div class="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-red-800">
+                                        @if ($listeningAlert['code'] !== null)
+                                            <span>Código: {{ $listeningAlert['code'] }}</span>
+                                        @endif
+                                        @if ($listeningAlert['criterion'] !== null)
+                                            <span>Criterio: {{ $listeningAlert['criterion'] }}</span>
+                                        @endif
+                                        @if ($listeningAlert['severity'] !== null)
+                                            <span>Severidad: {{ $listeningAlert['severity'] }}</span>
+                                        @endif
+                                    </div>
+                                    @if ($listeningAlert['reason'] !== null)
+                                        <p class="mt-2 text-sm leading-6 text-red-950">{{ $listeningAlert['reason'] }}</p>
+                                    @endif
+                                    @if ($listeningAlert['evidences'] !== [])
+                                        <div class="mt-3 space-y-2">
+                                            <h3 class="text-xs font-semibold uppercase tracking-wide text-red-800">Evidencias</h3>
+                                            @foreach ($listeningAlert['evidences'] as $listeningEvidence)
+                                                <blockquote class="border-l-2 border-red-300 pl-3 text-sm leading-6 text-red-950">
+                                                    {{ $listeningEvidence['text'] }}
+                                                    @php($evidenceMetadata = array_filter([$listeningEvidence['id'], $listeningEvidence['actor'], $listeningEvidence['from'], $listeningEvidence['until']], fn ($value) => $value !== null && $value !== ''))
+                                                    @if ($evidenceMetadata !== [])
+                                                        <footer class="mt-1 text-xs text-red-800/70">{{ implode(' · ', $evidenceMetadata) }}</footer>
+                                                    @endif
+                                                </blockquote>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </article>
+                            @endforeach
+                        </div>
+                    @else
+                        <p class="mt-4 text-sm text-red-900/80">La IA ha marcado la llamada para escucha, pero no hay avisos estructurados disponibles.</p>
+                    @endif
+                </section>
+            @endif
+
             <section class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm lg:p-6">
                 <h2 class="text-lg font-semibold text-brand-secondary">Resumen de la llamada</h2>
                 <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -91,7 +179,26 @@
                     <h2 class="text-lg font-semibold text-amber-900">Alertas relevantes</h2>
                     <ul class="mt-4 space-y-3 text-sm leading-6 text-amber-950">
                         @foreach ($alerts as $alert)
-                            <li class="flex gap-2"><span aria-hidden="true">⚠</span><span>{{ $display($alert) }}</span></li>
+                            <li class="flex gap-2">
+                                <x-heroicon-o-exclamation-triangle class="h-5 w-5 shrink-0" aria-hidden="true" />
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                                        @if ($alert['code'] !== null)<span>Código: {{ $alert['code'] }}</span>@endif
+                                        @if ($alert['criterion'] !== null)<span>Criterio: {{ $alert['criterion'] }}</span>@endif
+                                        @if ($alert['severity'] !== null)<span>Severidad: {{ $alert['severity'] }}</span>@endif
+                                    </div>
+                                    @if ($alert['reason'] !== null)
+                                        <p class="{{ $alert['code'] !== null || $alert['criterion'] !== null || $alert['severity'] !== null ? 'mt-1' : '' }}">{{ $alert['reason'] }}</p>
+                                    @endif
+                                    @if ($alert['evidences'] !== [])
+                                        <div class="mt-2 space-y-1">
+                                            @foreach ($alert['evidences'] as $evidence)
+                                                <blockquote class="border-l-2 border-amber-300 pl-3">{{ $evidence['text'] }}</blockquote>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            </li>
                         @endforeach
                     </ul>
                 </section>
@@ -132,13 +239,8 @@
                         <div><dt class="text-sm text-gray-500">Salesforce Task</dt><dd class="break-all font-mono text-sm">{{ $display($transcription?->salesforce_task_id) }}</dd></div>
                         <div><dt class="text-sm text-gray-500">Versión de reglas</dt><dd class="break-words text-sm">{{ $display($audit->rules_version ?: ($audit->auditResultData()['rulesVersion'] ?? null)) }}</dd></div>
                         <div><dt class="text-sm text-gray-500">Versión del evaluador</dt><dd class="break-words text-sm">{{ $display($audit->evaluator_version ?: ($audit->auditResultData()['evaluatorVersion'] ?? null)) }}</dd></div>
-                        <div><dt class="text-sm text-gray-500">Calidad de fuente</dt><dd class="text-sm">{{ $sourceQualityItems === [] ? 'No disponible' : implode(' ', $sourceQualityItems) }}</dd></div>
-                        <div><dt class="text-sm text-gray-500">Atribución</dt><dd class="text-sm">{{ is_array($attribution) ? $display($attribution['source'] ?? null) : $display($attribution) }}</dd></div>
-                        @if (is_array($attribution) && array_key_exists('confirmed', $attribution))
-                            <div><dt class="text-sm text-gray-500">Atribución confirmada</dt><dd class="text-sm">{{ $display($attribution['confirmed']) }}</dd></div>
-                        @endif
-                        @if (is_array($attribution) && array_key_exists('employeeId', $attribution))
-                            <div><dt class="text-sm text-gray-500">Identificador de empleado</dt><dd class="break-all font-mono text-sm">{{ $display($attribution['employeeId']) }}</dd></div>
+                        @if ($audit->employeeId() !== null)
+                            <div><dt class="text-sm text-gray-500">Identificador de empleado</dt><dd class="break-all font-mono text-sm">{{ $display($audit->employeeId()) }}</dd></div>
                         @endif
                     </dl>
                 </div>
