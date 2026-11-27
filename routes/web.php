@@ -149,6 +149,9 @@ Route::middleware('auth')->group(function () {
     Route::delete('/empresa/auditorias-ia-llamadas/{audit}', [CallAuditController::class, 'destroy'])
         ->whereNumber('audit')
         ->name('call-audits.destroy');
+    Route::get('/empresa/auditorias-ia-llamadas/{audit}/grabacion', [CallAuditController::class, 'recording'])
+        ->whereNumber('audit')
+        ->name('call-audits.recording');
     Route::get('/empresa/auditorias-ia-llamadas/{audit}', [CallAuditController::class, 'show'])
         ->whereNumber('audit')
         ->name('call-audits.show');

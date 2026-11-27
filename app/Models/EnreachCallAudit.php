@@ -199,6 +199,7 @@ class EnreachCallAudit extends Model
             ->map(function (array $criterion) use ($scoreCriteria): array {
                 $metadata = $scoreCriteria->get($criterion['id'], []);
                 $evaluationStatus = $criterion['valoracion'] ?? null;
+                $evidence = self::evidenceForDisplay($criterion);
 
                 return [
                     'id' => (string) $criterion['id'],
@@ -207,8 +208,8 @@ class EnreachCallAudit extends Model
                     'value' => self::readableEvaluationStatus($evaluationStatus),
                     'is_not_applicable' => $evaluationStatus === 'N/A',
                     'justification' => $criterion['justificacion'] ?? null,
-                    'evidence' => self::evidenceForDisplay($criterion),
-                    'context' => self::contextEvidenceForDisplay($criterion),
+                    'evidence' => $evidence,
+                    'context' => self::contextEvidenceForDisplay($criterion, $evidence),
                 ];
             })
             ->values()
@@ -266,7 +267,7 @@ class EnreachCallAudit extends Model
             : [];
     }
 
-    private static function contextEvidenceForDisplay(array $criterion): array
+    private static function contextEvidenceForDisplay(array $criterion, array $evidence): array
     {
         $context = $criterion['contextoEvidencias'] ?? null;
 
@@ -281,7 +282,50 @@ class EnreachCallAudit extends Model
                 && trim($item['texto']) !== '',
         ));
 
-        return self::deduplicateEvidence($validContext);
+        $contextEvidence = self::deduplicateEvidence($validContext);
+        $evidenceKeys = [];
+
+        foreach ($evidence as $item) {
+            $evidenceKeys[self::displayEvidenceKey($item)] = true;
+        }
+
+        return array_values(array_filter(
+            $contextEvidence,
+            static fn (array $item): bool => ! isset($evidenceKeys[self::displayEvidenceKey($item)]),
+        ));
+    }
+
+    private static function displayEvidenceKey(array $item): string
+    {
+        $fragmentId = $item['id'] ?? null;
+
+        if (is_scalar($fragmentId) && trim((string) $fragmentId) !== '') {
+            return 'id:' . trim((string) $fragmentId);
+        }
+
+        return 'value:' . hash('sha256', json_encode([
+            self::normalizeEvidencePart($item['text'] ?? null),
+            self::normalizeEvidencePart($item['actor'] ?? null),
+            self::normalizeEvidencePart($item['from'] ?? null),
+            self::normalizeEvidencePart($item['until'] ?? null),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private static function normalizeEvidencePart(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return function_exists('mb_strtolower')
+            ? mb_strtolower((string) preg_replace('/\s+/u', ' ', $value), 'UTF-8')
+            : strtolower((string) preg_replace('/\s+/', ' ', $value));
     }
 
     private static function deduplicateEvidence(array $items): array

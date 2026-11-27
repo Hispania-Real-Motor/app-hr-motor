@@ -9,12 +9,19 @@ use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
 class CallAuditController extends Controller
 {
     private const PERMISSION = 'call-audits.view';
+
+    private const RECORDING_URL_PREFIX = 'https://manager.masvoz.es/api/rs/call/detail/download/iframe/uniqueid/';
 
     private const SORTABLE_COLUMNS = [
         'audit_date' => 'Fecha de auditoría',
@@ -196,6 +203,164 @@ class CallAuditController extends Controller
             'audit' => $auditRecord,
             'commercialName' => $commercialUser?->name ?? 'Comercial sin identificar',
         ]);
+    }
+
+    public function recording(Request $request, int $audit): HttpResponse|StreamedResponse
+    {
+        $this->authorize($request);
+
+        $auditRecord = EnreachCallAudit::query()
+            ->with('transcription')
+            ->whereKey($audit)
+            ->whereHas('transcription', fn ($query) => $query->where('audited_by_ai', true))
+            ->firstOrFail();
+
+        $puid = trim((string) ($auditRecord->transcription?->call_puid ?? ''));
+
+        if ($puid === '') {
+            return $this->recordingError($request, 'La grabación no está disponible porque la llamada no tiene PUID.', 404);
+        }
+
+        if (preg_match('~[\x00-\x20\x7F\\/]~', $puid) === 1 || strlen($puid) > 512) {
+            return $this->recordingError($request, 'La grabación no está disponible para este identificador.', 404);
+        }
+
+        $username = config('services.enreach_recordings.username');
+        $password = config('services.enreach_recordings.password');
+
+        if (! is_string($username) || $username === '' || ! is_string($password) || $password === '') {
+            return $this->recordingError($request, 'La reproducción de grabaciones no está configurada en el servidor.', 503);
+        }
+
+        $range = $request->header('Range');
+        $requestHeaders = [];
+
+        if ($range !== null) {
+            if (! is_string($range) || preg_match('/^bytes=\d*-\d*$/', trim($range)) !== 1) {
+                return $this->recordingError($request, 'El rango de reproducción solicitado no es válido.', 416, ['Content-Range' => 'bytes */*']);
+            }
+
+            $requestHeaders['Range'] = trim($range);
+        }
+
+        $url = self::RECORDING_URL_PREFIX . rawurlencode($puid) . '.mp3';
+
+        try {
+            $upstream = Http::withBasicAuth($username, $password)
+                ->withOptions([
+                    'allow_redirects' => false,
+                    'stream' => true,
+                ])
+                ->timeout(60)
+                ->connectTimeout(10)
+                ->withHeaders($requestHeaders)
+                ->get($url);
+        } catch (ConnectionException) {
+            Log::warning('Enreach recording connection failed.', ['audit_id' => $audit]);
+
+            return $this->recordingError($request, 'No se ha podido conectar con el proveedor de grabaciones.', 502);
+        }
+
+        Log::info('Enreach recording response received.', [
+            'audit_id' => $audit,
+            'status' => $upstream->status(),
+            'content_type' => $upstream->header('Content-Type'),
+            'content_length' => $upstream->header('Content-Length'),
+            'content_range' => $upstream->header('Content-Range'),
+            'requested_range' => $range,
+        ]);
+
+        if ($upstream->status() === 401 || $upstream->status() === 403) {
+            return $this->recordingError($request, 'El proveedor no ha autorizado el acceso a esta grabación.', 502);
+        }
+
+        if ($upstream->status() === 404) {
+            return $this->recordingError($request, 'El proveedor no tiene disponible la grabación de esta llamada.', 404);
+        }
+
+        if ($upstream->status() === 416) {
+            return $this->recordingError($request, 'El proveedor no admite el tramo solicitado de la grabación.', 416, [
+                'Content-Range' => $upstream->header('Content-Range') ?: 'bytes */*',
+            ]);
+        }
+
+        if ($upstream->status() < 200 || $upstream->status() > 299) {
+            return $this->recordingError($request, 'No se ha podido obtener la grabación en este momento.', 502);
+        }
+
+        $resource = $upstream->resource();
+
+        if (! is_resource($resource)) {
+            return $this->recordingError($request, 'No se ha podido reproducir la grabación recibida.', 502);
+        }
+
+        $initialChunk = fread($resource, 8192);
+
+        if ($initialChunk === false || $initialChunk === '') {
+            fclose($resource);
+            Log::warning('Enreach recording response contained no audio bytes.', ['audit_id' => $audit]);
+
+            return $this->recordingError($request, 'El proveedor no ha devuelto datos de audio reproducibles.', 502);
+        }
+
+        Log::info('Enreach recording audio bytes received.', [
+            'audit_id' => $audit,
+            'bytes' => strlen($initialChunk),
+        ]);
+
+        $responseHeaders = [
+            'Content-Type' => $upstream->header('Content-Type') ?: 'audio/mpeg',
+            'Cache-Control' => 'private, no-store',
+            'Accept-Ranges' => 'bytes',
+            'X-Content-Type-Options' => 'nosniff',
+        ];
+
+        foreach (['Content-Length', 'Content-Range'] as $header) {
+            $value = $upstream->header($header);
+
+            if (is_string($value) && $value !== '') {
+                $responseHeaders[$header] = $value;
+            }
+        }
+
+        if ($request->boolean('download')) {
+            $filename = preg_replace('/[^A-Za-z0-9._-]+/', '-', $puid) ?: 'grabacion';
+            $responseHeaders['Content-Disposition'] = 'attachment; filename="llamada-' . $filename . '.mp3"';
+        }
+
+        return response()->stream(function () use ($resource, $initialChunk): void {
+            try {
+                echo $initialChunk;
+                flush();
+
+                while (! feof($resource)) {
+                    $chunk = fread($resource, 8192);
+
+                    if ($chunk === false || $chunk === '') {
+                        break;
+                    }
+
+                    echo $chunk;
+                    flush();
+                }
+            } finally {
+                fclose($resource);
+            }
+        }, $upstream->status(), $responseHeaders);
+    }
+
+    private function recordingError(Request $request, string $message, int $status, array $headers = []): HttpResponse
+    {
+        $responseHeaders = array_merge([
+            'Cache-Control' => 'private, no-store',
+            'Content-Type' => 'text/plain; charset=UTF-8',
+        ], $headers);
+
+        if ($request->boolean('diagnostic') || $request->expectsJson()) {
+            return response()->json(['message' => $message], $status, $responseHeaders);
+        }
+
+        return response($message, $status, $responseHeaders);
     }
 
     public function destroy(Request $request, int $audit): RedirectResponse
