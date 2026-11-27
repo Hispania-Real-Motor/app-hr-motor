@@ -146,6 +146,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/tickets', [TicketsController::class, 'index'])->name('tickets.index');
     Route::get('/tickets/informes', [TicketsController::class, 'reports'])->name('tickets.reports');
     Route::get('/empresa/auditorias-ia-llamadas', [CallAuditController::class, 'index'])->name('call-audits.index');
+    Route::delete('/empresa/auditorias-ia-llamadas/{audit}', [CallAuditController::class, 'destroy'])
+        ->whereNumber('audit')
+        ->name('call-audits.destroy');
     Route::get('/empresa/auditorias-ia-llamadas/{audit}', [CallAuditController::class, 'show'])
         ->whereNumber('audit')
         ->name('call-audits.show');
