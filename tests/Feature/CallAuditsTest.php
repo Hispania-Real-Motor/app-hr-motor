@@ -9,6 +9,7 @@ use App\Models\Dealership;
 use App\Models\User;
 use App\Models\Zone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -161,6 +162,8 @@ class CallAuditsTest extends TestCase
 
         $this->get(route('call-audits.show', $audit))
             ->assertOk()
+            ->assertSee('Grabación de la llamada')
+            ->assertSee(route('call-audits.recording', $audit), false)
             ->assertSee('Laura Comercial')
             ->assertSee('005-COMMERCIAL-001')
             ->assertDontSee('Atribución confirmada')
@@ -188,6 +191,101 @@ class CallAuditsTest extends TestCase
         $this->actingAs($user)->get(route('call-audits.index'))
             ->assertOk()
             ->assertSee('Comercial sin identificar');
+    }
+
+    public function test_recording_requires_the_call_audits_permission(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $transcription = $this->createTranscription('PUID-UNAUTHORIZED-RECORDING');
+        $audit = EnreachCallAudit::query()->create(['transcription_id' => $transcription->id, 'audit_result' => []]);
+        Http::fake();
+
+        $this->actingAs($user)
+            ->get(route('call-audits.recording', $audit))
+            ->assertForbidden();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_recording_returns_streamed_audio_and_forwards_a_valid_range_without_exposing_credentials(): void
+    {
+        config([
+            'services.enreach_recordings.username' => 'test-recordings-user',
+            'services.enreach_recordings.password' => 'test-recordings-password',
+        ]);
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $this->grant($user);
+        $transcription = $this->createTranscription('PUID-RANGE-001');
+        $audit = EnreachCallAudit::query()->create(['transcription_id' => $transcription->id, 'audit_result' => []]);
+        Http::fake([
+            'https://manager.masvoz.es/api/rs/call/detail/download/iframe/uniqueid/PUID-RANGE-001.mp3' => Http::response(
+                'fake-audio',
+                206,
+                [
+                    'Content-Type' => 'audio/mpeg',
+                    'Content-Length' => '10',
+                    'Content-Range' => 'bytes 0-9/100',
+                ],
+            ),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->withHeader('Range', 'bytes=0-9')
+            ->get(route('call-audits.recording', $audit));
+
+        $response->assertStatus(206)
+            ->assertHeader('Content-Type', 'audio/mpeg')
+            ->assertHeader('Content-Range', 'bytes 0-9/100')
+            ->assertHeader('Cache-Control', 'private, no-store');
+        $this->assertSame('fake-audio', $response->streamedContent());
+        Http::assertSent(function ($request): bool {
+            return $request->url() === 'https://manager.masvoz.es/api/rs/call/detail/download/iframe/uniqueid/PUID-RANGE-001.mp3'
+                && $request->header('Range') === ['bytes=0-9']
+                && str_starts_with((string) $request->header('Authorization')[0], 'Basic ');
+        });
+
+        $downloadResponse = $this->actingAs($user)
+            ->get(route('call-audits.recording', [$audit, 'download' => 1]));
+
+        $downloadResponse->assertStatus(206)
+            ->assertHeader('Content-Disposition', 'attachment; filename="llamada-PUID-RANGE-001.mp3"');
+    }
+
+    public function test_recording_reports_missing_puid_and_provider_access_errors_without_leaking_upstream_details(): void
+    {
+        config([
+            'services.enreach_recordings.username' => 'test-recordings-user',
+            'services.enreach_recordings.password' => 'test-recordings-password',
+        ]);
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $this->grant($user);
+        $missingPuidTranscription = $this->createTranscription('PUID-TEMP');
+        $missingPuidTranscription->update(['call_puid' => null]);
+        $missingPuidAudit = EnreachCallAudit::query()->create(['transcription_id' => $missingPuidTranscription->id, 'audit_result' => []]);
+
+        Http::fake([
+            'https://manager.masvoz.es/*' => Http::response('provider error details', 403),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('call-audits.recording', $missingPuidAudit))
+            ->assertNotFound()
+            ->assertSee('no tiene PUID')
+            ->assertDontSee('provider error details');
+        Http::assertNothingSent();
+
+        $this->actingAs($user)
+            ->get(route('call-audits.recording', [$missingPuidAudit, 'diagnostic' => 1]), ['Accept' => 'application/json'])
+            ->assertNotFound()
+            ->assertJson(['message' => 'La grabación no está disponible porque la llamada no tiene PUID.']);
+
+        $transcription = $this->createTranscription('PUID-FORBIDDEN-001');
+        $audit = EnreachCallAudit::query()->create(['transcription_id' => $transcription->id, 'audit_result' => []]);
+        $this->actingAs($user)
+            ->get(route('call-audits.recording', $audit))
+            ->assertStatus(502)
+            ->assertSee('no ha autorizado el acceso')
+            ->assertDontSee('provider error details');
     }
 
     public function test_real_audit_shape_is_mapped_to_compact_criteria_components(): void
@@ -230,9 +328,10 @@ class CallAuditsTest extends TestCase
             ->assertSee('35')
             ->assertSee('No evaluable')
             ->assertSee('Profesionalidad')
-            ->assertSee('Fuente completa.')
-            ->assertSee('No')
-            ->assertSee('Contexto')
+            ->assertSee('[00:01] Texto literal')
+            ->assertDontSee('[Tiempo no disponible] [00:01] Texto literal')
+            ->assertDontSee('Fuente completa.')
+            ->assertDontSee('Contexto')
             ->assertDontSee('motivoNA')
             ->assertDontSee('evidenciaIds')
             ->assertDontSee('valoracionModelo');
@@ -274,6 +373,46 @@ class CallAuditsTest extends TestCase
             ->assertDontSee('Evidencia C10 que no debe mostrarse.')
             ->assertDontSee('Contexto C10 que no debe mostrarse.')
             ->assertSee('Evidencia C11 visible.');
+    }
+
+    public function test_detail_formats_evidence_times_for_criteria_and_alerts_without_repeating_timestamps(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_MANAGER, 'extra_role' => null]);
+        $this->grant($user);
+        $transcription = $this->createTranscription('PUID-TIMES');
+        $audit = EnreachCallAudit::query()->create([
+            'transcription_id' => $transcription->id,
+            'audit_result' => [
+                'requiresListening' => true,
+                'alerts' => [[
+                    'codigo' => 'MP01',
+                    'motivo' => 'Aviso con tiempo estructurado.',
+                    'evidencias' => [['texto' => 'Cita de alerta', 'desde' => 364]],
+                ]],
+                'evaluation' => [
+                    'criterios' => [[
+                        'id' => 'C01',
+                        'valoracion' => 'Cumple',
+                        'justificacion' => 'Justificación.',
+                        'evidencias' => [
+                            ['texto' => 'Cita de criterio', 'desde' => 247],
+                            ['texto' => 'Cita sin tiempo'],
+                            ['texto' => '[00:06:04] Cita ya marcada'],
+                        ],
+                    ]],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($user)->get(route('call-audits.show', $audit))
+            ->assertOk()
+            ->assertSee('[00:04:07] Cita de criterio')
+            ->assertSee('[Tiempo no disponible] Cita sin tiempo')
+            ->assertSee('[00:06:04] Cita ya marcada')
+            ->assertSee('[00:06:04] Cita de alerta')
+            ->assertDontSee('[00:06:04] [00:06:04] Cita ya marcada')
+            ->assertDontSee('247')
+            ->assertDontSee('364');
     }
 
     public function test_list_sorting_is_server_side_numeric_and_keeps_nulls_last(): void
@@ -644,7 +783,10 @@ class CallAuditsTest extends TestCase
                             ['texto' => 'Cita C03 dos', 'actor' => 'CLIENTE', 'desde' => '00:02'],
                             ['texto' => 'Cita C03 dos', 'actor' => 'CLIENTE', 'desde' => '00:03'],
                         ],
-                        'contextoEvidencias' => [['texto' => 'Contexto C03']],
+                        'contextoEvidencias' => [
+                            ['texto' => 'Contexto C03'],
+                            ['texto' => '  CITA   C03 UNO ', 'actor' => 'CLIENTE', 'desde' => '00:01'],
+                        ],
                     ],
                     [
                         'id' => 'C04',

@@ -58,7 +58,7 @@
     $footerPlatformColumns = collect($footerPlatformItems)->chunk((int) ceil(max(count($footerPlatformItems), 1) / 2));
 @endphp
 
-<footer class="mt-16 bg-brand-secondary text-white">
+<footer data-layout-footer class="mt-16 bg-brand-secondary text-white">
     <div class="mx-auto max-w-7xl px-6 py-10 lg:px-8">
         <div class="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
             <div class="max-w-sm">

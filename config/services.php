@@ -92,6 +92,11 @@ return [
         'integration_status' => env('ENREACH_INTEGRATION_STATUS', 'pending'),
     ],
 
+    'enreach_recordings' => [
+        'username' => env('ENREACH_RECORDINGS_USERNAME'),
+        'password' => env('ENREACH_RECORDINGS_PASSWORD'),
+    ],
+
     'company' => [
         'my_maps_embed_url' => env('COMPANY_MY_MAPS_EMBED_URL', 'https://www.google.com/maps/d/embed?mid=1BuhTvvVFqOEHfrW81pbp4xteNZi8SNA&ehbc=2E312F'),
     ],

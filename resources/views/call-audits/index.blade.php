@@ -110,7 +110,11 @@
                 @endif
             </form>
 
-            <div data-call-audits-results>
+            <div data-call-audits-results-container class="relative">
+            <div data-call-audits-error role="alert" class="hidden mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 lg:mx-6">
+                No se han podido actualizar las auditorías. Inténtalo de nuevo.
+            </div>
+            <div data-call-audits-results aria-busy="false">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-100 text-left text-sm">
                     <thead class="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -184,7 +188,7 @@
                                 <td class="px-5 py-4 font-mono text-xs text-gray-700">{{ $audit->call_puid ?: 'Sin PUID' }}</td>
                                 <td class="px-5 py-4">
                                     <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $scoreClass }}" title="Nota provisional">
-                                        {{ $audit->score === null ? 'Sin nota' : number_format((float) $audit->score, 2, ',', '.') . '/10' }}
+                                        {{ $audit->score === null ? 'Sin nota' : rtrim(rtrim(number_format((float) $audit->score, 2, ',', '.'), '0'), ',') . '/10' }}
                                     </span>
                                 </td>
                                 <td class="px-5 py-4 text-gray-600">
@@ -237,6 +241,14 @@
                 <div class="border-t border-gray-100 px-5 py-4">{{ $audits->links() }}</div>
             @endif
             </div>
+            <div data-call-audits-loading class="pointer-events-auto absolute inset-0 z-10 hidden items-start justify-center bg-white/75 px-5 pb-12 pt-8 backdrop-blur-[1px]" aria-hidden="true">
+                <div class="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-brand-secondary shadow-lg">
+                    <span class="h-7 w-7 animate-spin rounded-full border-4 border-brand-primary/20 border-t-brand-primary" aria-hidden="true"></span>
+                    <span>Actualizando llamadas…</span>
+                </div>
+            </div>
+            <p data-call-audits-loading-announcement class="sr-only" role="status" aria-live="polite"></p>
+            </div>
         </section>
     </div>
     <script>
@@ -244,14 +256,29 @@
             const form = document.querySelector('[data-call-audits-filter-form]');
             const results = document.querySelector('[data-call-audits-results]');
             const total = document.querySelector('[data-call-audits-total]');
+            const loading = document.querySelector('[data-call-audits-loading]');
+            const loadingAnnouncement = document.querySelector('[data-call-audits-loading-announcement]');
+            const errorMessage = document.querySelector('[data-call-audits-error]');
 
             if (!form || !results) {
                 return;
             }
 
             let activeRequest;
+            let requestSequence = 0;
             let timeout;
             let renderedZone = form.querySelector('[name="zone_id"]')?.value ?? '';
+
+            const setLoading = (isLoading) => {
+                results.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+                loading?.classList.toggle('hidden', !isLoading);
+                loading?.classList.toggle('flex', isLoading);
+                loading?.setAttribute('aria-hidden', isLoading ? 'false' : 'true');
+
+                if (loadingAnnouncement) {
+                    loadingAnnouncement.textContent = isLoading ? 'Actualizando llamadas…' : '';
+                }
+            };
 
             const bindLiveFilters = () => {
                 form.querySelectorAll('[data-live-filter]').forEach((control) => {
@@ -272,10 +299,12 @@
 
             const loadResults = async (url, updateHistory = true) => {
                 const requestUrl = new URL(url, window.location.origin);
+                const requestId = ++requestSequence;
                 requestUrl.searchParams.set('ajax', '1');
                 activeRequest?.abort();
                 activeRequest = new AbortController();
-                results.setAttribute('aria-busy', 'true');
+                errorMessage?.classList.add('hidden');
+                setLoading(true);
 
                 try {
                     const response = await fetch(requestUrl, {
@@ -285,6 +314,10 @@
                         },
                         signal: activeRequest.signal,
                     });
+
+                    if (requestId !== requestSequence) {
+                        return;
+                    }
 
                     if (!response.ok) {
                         throw new Error('No se han podido actualizar las auditorías.');
@@ -300,7 +333,7 @@
                     }
 
                     results.innerHTML = nextResults.innerHTML;
-                    results.setAttribute('aria-busy', 'false');
+                    setLoading(false);
 
                     const nextZone = nextForm?.querySelector('[name="zone_id"]')?.value ?? '';
 
@@ -322,8 +355,12 @@
 
                     window.Alpine?.initTree(results);
                 } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        results.setAttribute('aria-busy', 'false');
+                    if (error.name !== 'AbortError' && requestId === requestSequence) {
+                        setLoading(false);
+                        errorMessage?.classList.remove('hidden');
+                        if (loadingAnnouncement) {
+                            loadingAnnouncement.textContent = 'No se han podido actualizar las auditorías. Inténtalo de nuevo.';
+                        }
                         console.error(error);
                     }
                 }

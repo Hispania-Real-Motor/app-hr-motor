@@ -43,12 +43,39 @@
                 ->values()
                 ->all();
         };
+        $formatEvidenceTime = function (mixed $value): ?string {
+            if (is_numeric($value) && (float) $value >= 0) {
+                $seconds = (int) floor((float) $value);
+
+                return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+            }
+
+            if (is_string($value) && preg_match('/^(\d+):(\d{2})(?::(\d{2}))?$/', trim($value), $matches) === 1) {
+                $hours = count($matches) === 4 ? (int) $matches[1] : 0;
+                $minutes = count($matches) === 4 ? (int) $matches[2] : (int) $matches[1];
+                $seconds = count($matches) === 4 ? (int) $matches[3] : (int) $matches[2];
+
+                return sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+            }
+
+            return null;
+        };
+        $startsWithTimestamp = fn (mixed $text): bool => is_string($text)
+            && preg_match('/^\s*(?:\[\d{2}:\d{2}(?::\d{2})?\]|\d{1,2}:\d{2}(?::\d{2})?)/', $text) === 1;
+        $evidenceTimeLabel = function (mixed $from, mixed $text) use ($formatEvidenceTime, $startsWithTimestamp): string {
+            if ($startsWithTimestamp($text)) {
+                return '';
+            }
+
+            return $formatEvidenceTime($from) ?? 'Tiempo no disponible';
+        };
         $strengths = $textList($evaluation['fortalezas'] ?? null);
         $improvements = $textList($evaluation['mejoras'] ?? null);
         $actionPlan = $textList($evaluation['planAccion'] ?? null);
     @endphp
 
-    <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div data-call-audit-page class="relative pb-28">
+        <div data-call-audit-shell class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
         <a href="{{ route('call-audits.index') }}" class="text-sm font-semibold text-brand-primary hover:underline">← Volver a auditorías</a>
         <div class="mb-8 mt-5">
             <div class="flex flex-wrap items-start justify-between gap-4">
@@ -127,8 +154,9 @@
                                             <h3 class="text-xs font-semibold uppercase tracking-wide text-red-800">Evidencias</h3>
                                             @foreach ($listeningAlert['evidences'] as $listeningEvidence)
                                                 <blockquote class="border-l-2 border-red-300 pl-3 text-sm leading-6 text-red-950">
-                                                    {{ $listeningEvidence['text'] }}
-                                                    @php($evidenceMetadata = array_filter([$listeningEvidence['id'], $listeningEvidence['actor'], $listeningEvidence['from'], $listeningEvidence['until']], fn ($value) => $value !== null && $value !== ''))
+                                                    @php($evidenceTime = $evidenceTimeLabel($listeningEvidence['from'], $listeningEvidence['text']))
+                                                    @if ($evidenceTime !== '')[{{ $evidenceTime }}] @endif{{ $listeningEvidence['text'] }}
+                                                    @php($evidenceMetadata = array_filter([$listeningEvidence['id'], $listeningEvidence['actor']], fn ($value) => $value !== null && $value !== '' && strtolower(trim((string) $value)) !== 'comercial'))
                                                     @if ($evidenceMetadata !== [])
                                                         <footer class="mt-1 text-xs text-red-800/70">{{ implode(' · ', $evidenceMetadata) }}</footer>
                                                     @endif
@@ -149,7 +177,7 @@
                 <h2 class="text-lg font-semibold text-brand-secondary">Resumen de la llamada</h2>
                 <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div><dt class="text-sm text-gray-500">Comercial</dt><dd class="text-lg font-semibold">{{ $commercialName }}</dd></div>
-                    <div><dt class="text-sm text-gray-500">Nota provisional</dt><dd class="text-lg font-semibold">{{ $audit->score === null ? 'Sin nota' : number_format((float) $audit->score, 2, ',', '.') . '/10' }}</dd></div>
+                    <div><dt class="text-sm text-gray-500">Nota provisional</dt><dd class="text-lg font-semibold">{{ $audit->score === null ? 'Sin nota' : rtrim(rtrim(number_format((float) $audit->score, 2, ',', '.'), '0'), ',') . '/10' }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Cobertura</dt><dd class="text-lg font-semibold">{{ $display($audit->coverage()) }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Estado</dt><dd class="text-sm font-semibold">{{ $display($audit->status()) }}</dd></div>
                     <div><dt class="text-sm text-gray-500">Criterios</dt><dd class="text-lg font-semibold">{{ count($criteria) }}</dd></div>
@@ -193,7 +221,10 @@
                                     @if ($alert['evidences'] !== [])
                                         <div class="mt-2 space-y-1">
                                             @foreach ($alert['evidences'] as $evidence)
-                                                <blockquote class="border-l-2 border-amber-300 pl-3">{{ $evidence['text'] }}</blockquote>
+                                                <blockquote class="border-l-2 border-amber-300 pl-3">
+                                                    @php($evidenceTime = $evidenceTimeLabel($evidence['from'], $evidence['text']))
+                                                    @if ($evidenceTime !== '')[{{ $evidenceTime }}] @endif{{ $evidence['text'] }}
+                                                </blockquote>
                                             @endforeach
                                         </div>
                                     @endif
@@ -272,45 +303,29 @@
                             </summary>
                             <div @class([
                                 'grid gap-5 bg-gray-50 px-5 py-5 lg:px-6',
-                                'lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]' => ! $criterion['is_not_applicable'],
+                                'lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]' => ! $criterion['is_not_applicable'] && $criterion['evidence'] !== [],
                             ])>
                                 <div>
                                     <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Justificación</h3>
                                     <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">{{ $display($criterion['justification'], 'Sin justificación disponible.') }}</p>
                                 </div>
-                                @unless ($criterion['is_not_applicable'])
-                                <div>
-                                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Evidencias</h3>
-                                    @if ($criterion['evidence'] !== [])
+                                @if (! $criterion['is_not_applicable'] && $criterion['evidence'] !== [])
+                                    <div>
+                                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Evidencias</h3>
                                         <div class="mt-2 space-y-3">
                                             @foreach ($criterion['evidence'] as $evidence)
                                                 <blockquote class="border-l-2 border-gray-300 pl-3 text-sm leading-6 text-gray-700">
-                                                    {{ $evidence['text'] }}
-                                                    @if (! empty($evidence['id']) || ! empty($evidence['actor']) || ! empty($evidence['certainty']) || $evidence['from'] !== null || $evidence['until'] !== null)
-                                                        <footer class="mt-1 text-xs text-gray-500">{{ implode(' · ', array_filter([$evidence['id'] ?? null, $evidence['actor'] ?? null, $evidence['certainty'] ?? null, $evidence['from'] ?? null, $evidence['until'] ?? null], fn ($value) => $value !== null && $value !== '')) }}</footer>
+                                                    @php($evidenceTime = $evidenceTimeLabel($evidence['from'] ?? null, $evidence['text']))
+                                                    @if ($evidenceTime !== '')[{{ $evidenceTime }}] @endif{{ $evidence['text'] }}
+                                                    @php($evidenceMetadata = array_filter([$evidence['id'] ?? null, $evidence['actor'] ?? null], fn ($value) => $value !== null && $value !== '' && strtolower(trim((string) $value)) !== 'comercial'))
+                                                    @if ($evidenceMetadata !== [])
+                                                        <footer class="mt-1 text-xs text-gray-500">{{ implode(' · ', $evidenceMetadata) }}</footer>
                                                     @endif
                                                 </blockquote>
                                             @endforeach
                                         </div>
-                                    @else
-                                        <p class="mt-2 text-sm text-gray-500">Sin evidencias disponibles.</p>
-                                    @endif
-
-                                    @if ($criterion['context'] !== [])
-                                        <h3 class="mt-6 text-xs font-semibold uppercase tracking-wide text-gray-500">Contexto</h3>
-                                        <div class="mt-2 space-y-3">
-                                            @foreach ($criterion['context'] as $evidence)
-                                                <blockquote class="border-l-2 border-slate-300 pl-3 text-sm leading-6 text-gray-600">
-                                                    {{ $evidence['text'] }}
-                                                    @if (! empty($evidence['id']) || ! empty($evidence['actor']) || ! empty($evidence['certainty']) || $evidence['from'] !== null || $evidence['until'] !== null)
-                                                        <footer class="mt-1 text-xs text-gray-500">{{ implode(' · ', array_filter([$evidence['id'] ?? null, $evidence['actor'] ?? null, $evidence['certainty'] ?? null, $evidence['from'] ?? null, $evidence['until'] ?? null], fn ($value) => $value !== null && $value !== '')) }}</footer>
-                                                    @endif
-                                                </blockquote>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                </div>
-                                @endunless
+                                    </div>
+                                @endif
                             </div>
                         </details>
                     @empty
@@ -319,5 +334,255 @@
                 </div>
             </section>
         </div>
+        </div>
+
+        @if (filled($transcription?->call_puid))
+            <div data-call-audit-player class="fixed inset-x-0 bottom-0 z-40 border-t border-brand-secondary/15 bg-brand-secondary text-white shadow-[0_-10px_30px_rgba(15,23,42,0.14)] transition-[box-shadow] duration-200">
+                <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+                    <audio data-call-audit-recording preload="none" aria-hidden="true" class="absolute h-px w-px overflow-hidden opacity-0">
+                        <source src="{{ route('call-audits.recording', $audit) }}" type="audio/mpeg">
+                    </audio>
+
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 sm:flex-nowrap">
+                        <button type="button" data-call-audit-play class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-secondary transition hover:bg-brand-primary hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brand-secondary" aria-label="Reproducir grabación">
+                            <x-heroicon-o-play data-call-audit-play-icon class="h-5 w-5" aria-hidden="true" />
+                            <span data-call-audit-loading-icon class="call-audit-equalizer hidden h-5 w-5 flex items-end justify-center gap-0.5 text-brand-secondary" aria-hidden="true">
+                                <span class="call-audit-equalizer-bar"></span>
+                                <span class="call-audit-equalizer-bar"></span>
+                                <span class="call-audit-equalizer-bar"></span>
+                                <span class="call-audit-equalizer-bar"></span>
+                            </span>
+                            <x-heroicon-o-pause data-call-audit-pause-icon class="hidden h-5 w-5" aria-hidden="true" />
+                        </button>
+
+                        <div class="min-w-0 flex-1 basis-[calc(100%-10rem)] sm:basis-auto">
+                            <div class="flex items-center justify-between gap-3 text-xs text-white/75">
+                                <span class="truncate font-medium">Grabación de la llamada</span>
+                                <span class="shrink-0 tabular-nums"><span data-call-audit-current-time>0:00</span> / <span data-call-audit-duration>0:00</span></span>
+                            </div>
+                            <input data-call-audit-progress type="range" min="0" max="0" step="0.01" value="0" class="mt-1.5 h-2 w-full cursor-pointer accent-brand-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80" aria-label="Desplazar por la grabación" disabled>
+                        </div>
+
+                        <button type="button" data-call-audit-speed class="inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl px-2 text-xs font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80" aria-label="Cambiar velocidad de reproducción" aria-live="polite">
+                            <span data-call-audit-speed-label>1×</span>
+                        </button>
+
+                        <a href="{{ route('call-audits.recording', [$audit, 'download' => 1]) }}" download="llamada-{{ preg_replace('/[^A-Za-z0-9._-]+/', '-', (string) $transcription->call_puid) }}.mp3" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/80 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80" aria-label="Descargar grabación">
+                            <x-heroicon-o-arrow-down-tray class="h-5 w-5" aria-hidden="true" />
+                        </a>
+                    </div>
+
+                    <p data-call-audit-recording-error hidden class="mt-2 rounded-xl bg-red-500/20 px-3 py-2 text-xs leading-5 text-red-100">No se ha podido cargar la grabación.</p>
+                </div>
+            </div>
+        @else
+            <div class="absolute inset-x-4 bottom-0 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm sm:inset-x-6 lg:inset-x-8">
+                La grabación no está disponible porque esta llamada no tiene PUID.
+            </div>
+        @endif
     </div>
+    @if (filled($transcription?->call_puid))
+        <style>
+            .call-audit-equalizer-bar {
+                width: 3px;
+                height: 16px;
+                border-radius: 9999px;
+                background: currentColor;
+                transform: scaleY(.35);
+                transform-origin: bottom;
+                animation: call-audit-equalizer-pulse 820ms ease-in-out infinite alternate;
+            }
+
+            .call-audit-equalizer-bar:nth-child(2) {
+                animation-delay: -180ms;
+            }
+
+            .call-audit-equalizer-bar:nth-child(3) {
+                animation-delay: -390ms;
+            }
+
+            .call-audit-equalizer-bar:nth-child(4) {
+                animation-delay: -570ms;
+            }
+
+            @keyframes call-audit-equalizer-pulse {
+                from { transform: scaleY(.35); }
+                to { transform: scaleY(1); }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .call-audit-equalizer-bar {
+                    animation: none;
+                    transform: scaleY(.7);
+                }
+            }
+        </style>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const shell = document.querySelector('[data-call-audit-page]');
+                const player = shell?.querySelector('[data-call-audit-player]');
+                const audio = shell?.querySelector('[data-call-audit-recording]');
+                const playButton = shell?.querySelector('[data-call-audit-play]');
+                const playIcon = shell?.querySelector('[data-call-audit-play-icon]');
+                const loadingIcon = shell?.querySelector('[data-call-audit-loading-icon]');
+                const pauseIcon = shell?.querySelector('[data-call-audit-pause-icon]');
+                const progress = shell?.querySelector('[data-call-audit-progress]');
+                const speedButton = shell?.querySelector('[data-call-audit-speed]');
+                const speedLabel = shell?.querySelector('[data-call-audit-speed-label]');
+                const currentTime = shell?.querySelector('[data-call-audit-current-time]');
+                const duration = shell?.querySelector('[data-call-audit-duration]');
+                const errorMessage = shell?.querySelector('[data-call-audit-recording-error]');
+                const footer = document.querySelector('[data-layout-footer]');
+
+                if (!shell || !player || !audio || !playButton || !playIcon || !loadingIcon || !pauseIcon || !progress || !speedButton || !speedLabel) {
+                    return;
+                }
+
+                let isLoading = false;
+
+                const playbackSpeeds = [
+                    { value: 1, label: '1×' },
+                    { value: 1.5, label: '1,5×' },
+                    { value: 2, label: '2×' },
+                ];
+                let playbackSpeedIndex = 0;
+
+                const applyPlaybackSpeed = () => {
+                    const speed = playbackSpeeds[playbackSpeedIndex];
+                    audio.playbackRate = speed.value;
+                    audio.defaultPlaybackRate = speed.value;
+
+                    if ('preservesPitch' in audio) {
+                        audio.preservesPitch = true;
+                    } else if ('webkitPreservesPitch' in audio) {
+                        audio.webkitPreservesPitch = true;
+                    }
+
+                    speedLabel.textContent = speed.label;
+                    speedButton.setAttribute('aria-label', `Velocidad de reproducción: ${speed.label}. Pulsar para cambiar`);
+                };
+
+                speedButton.addEventListener('click', () => {
+                    playbackSpeedIndex = (playbackSpeedIndex + 1) % playbackSpeeds.length;
+                    applyPlaybackSpeed();
+                });
+                applyPlaybackSpeed();
+
+                const formatTime = (seconds) => {
+                    if (!Number.isFinite(seconds) || seconds < 0) {
+                        return '0:00';
+                    }
+
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSeconds = Math.floor(seconds % 60).toString().padStart(2, '0');
+                    return `${minutes}:${remainingSeconds}`;
+                };
+
+                const setPlayerState = ({ playing = false, loading = false } = {}) => {
+                    isLoading = loading;
+                    playIcon.classList.toggle('hidden', playing || loading);
+                    loadingIcon.classList.toggle('hidden', !loading);
+                    pauseIcon.classList.toggle('hidden', !playing || loading);
+                    playButton.setAttribute('aria-label', loading
+                        ? 'Cargando grabación'
+                        : (playing ? 'Pausar grabación' : 'Reproducir grabación'));
+                };
+
+                const showError = async () => {
+                    if (!errorMessage) {
+                        return;
+                    }
+
+                    errorMessage.textContent = 'No se ha podido cargar la grabación. Comprueba el acceso al proveedor o inténtalo de nuevo.';
+                    errorMessage.removeAttribute('hidden');
+
+                    try {
+                        const diagnosticUrl = new URL(audio.currentSrc || audio.querySelector('source')?.src || '', window.location.href);
+                        diagnosticUrl.searchParams.set('diagnostic', '1');
+                        const response = await fetch(diagnosticUrl, {
+                            headers: { Accept: 'application/json' },
+                            credentials: 'same-origin',
+                        });
+                        const payload = await response.json();
+
+                        if (payload?.message) {
+                            errorMessage.textContent = payload.message;
+                        }
+                    } catch {
+                        // Keep the safe generic message when diagnostics are unavailable.
+                    }
+                };
+
+                playButton.addEventListener('click', async () => {
+                    if (isLoading) {
+                        return;
+                    }
+
+                    if (audio.paused) {
+                        setPlayerState({ loading: true });
+
+                        try {
+                            await audio.play();
+                        } catch {
+                            setPlayerState();
+                            await showError();
+                        }
+                    } else {
+                        audio.pause();
+                    }
+                });
+
+                audio.addEventListener('loadedmetadata', () => {
+                    duration.textContent = formatTime(audio.duration);
+                    progress.max = Number.isFinite(audio.duration) ? audio.duration : 0;
+                    progress.disabled = !Number.isFinite(audio.duration) || audio.duration <= 0;
+                });
+                audio.addEventListener('timeupdate', () => {
+                    currentTime.textContent = formatTime(audio.currentTime);
+                    if (!progress.matches(':active')) {
+                        progress.value = audio.currentTime;
+                    }
+                });
+                audio.addEventListener('loadstart', () => {
+                    if (!audio.paused) {
+                        setPlayerState({ loading: true });
+                    }
+                });
+                audio.addEventListener('waiting', () => {
+                    if (!audio.paused) {
+                        setPlayerState({ loading: true });
+                    }
+                });
+                audio.addEventListener('playing', () => setPlayerState({ playing: true }));
+                audio.addEventListener('pause', () => setPlayerState());
+                audio.addEventListener('ended', () => setPlayerState());
+                audio.addEventListener('error', () => {
+                    setPlayerState();
+                    showError();
+                });
+                progress.addEventListener('input', () => {
+                    audio.currentTime = Number(progress.value);
+                });
+
+                const syncDockPosition = () => {
+                    if (!footer) {
+                        return;
+                    }
+
+                    const footerTop = footer.getBoundingClientRect().top;
+                    const fixedDockTop = window.innerHeight - player.offsetHeight;
+                    const dockWouldTouchFooter = footerTop <= fixedDockTop;
+                    player.classList.toggle('fixed', !dockWouldTouchFooter);
+                    player.classList.toggle('absolute', dockWouldTouchFooter);
+                    player.classList.toggle('bottom-0', !dockWouldTouchFooter);
+                    player.classList.toggle('-bottom-16', dockWouldTouchFooter);
+                    player.classList.toggle('shadow-none', dockWouldTouchFooter);
+                };
+
+                syncDockPosition();
+                window.addEventListener('scroll', syncDockPosition, { passive: true });
+                window.addEventListener('resize', syncDockPosition);
+            });
+        </script>
+    @endif
 @endsection
