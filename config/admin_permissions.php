@@ -183,6 +183,14 @@ return [
             'scope' => 'application',
             'default_roles' => [],
         ],
+        'call-audits.delete' => [
+            'label' => 'Eliminar auditorías IA de llamadas',
+            'description' => 'Permite eliminar definitivamente una auditoría IA y su transcripción asociada.',
+            'route' => 'call-audits.index',
+            'icon' => 'phone',
+            'scope' => 'application',
+            'default_roles' => [],
+        ],
         'magazine.manage' => [
             'label' => 'Gestión de la revista mensual',
             'description' => 'Publica la edición mensual y actualiza la portada visible.',
